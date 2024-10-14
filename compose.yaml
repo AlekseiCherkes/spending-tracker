@@ -1,0 +1,37 @@
+name: spending-tracker
+services:
+  test:
+    image: busybox
+    command: echo HW
+#   application:
+#     image:
+#     networks:
+#       - front-tier
+#       - back-tier
+#
+  database:
+    image: postgres:17
+    ports:
+      - 5432:5432
+    # networks:
+    #   - back-tier
+    environment:
+      POSTGRES_PASSWORD: mysupersecret
+      POSTGRES_DB: spending-tracking
+      # Defaults
+      # POSTGRES_USER: postgres
+      # PGDATA: /var/lib/postgresql/data
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+
+# volumes:
+#   database-data:
+#
+networks:
+  front-tier: {}
+  back-tier: {}
+
