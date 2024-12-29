@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "python-telegram-bot>=21.9",
+]
 
 [project.scripts]
 hello = "spending_tracker:hello"
@@ -13,7 +15,6 @@ hello = "spending_tracker:hello"
 # Using this config-settings we enable compat mode that fixes the problem.
 [tool.uv.pip]
 config-settings = { editable_mode = "compat" }
-pip = { config-settings = { editable_mode = "compat" } }
 
 [build-system]
 requires = ["hatchling"]
