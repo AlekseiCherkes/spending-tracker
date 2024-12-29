@@ -9,6 +9,12 @@ dependencies = []
 [project.scripts]
 hello = "spending_tracker:hello"
 
+# Some IDEs (at least JetBrains' ones) do not work property with the new package installation method used by pip.
+# Using this config-settings we enable compat mode that fixes the problem.
+[tool.uv.pip]
+config-settings = { editable_mode = "compat" }
+pip = { config-settings = { editable_mode = "compat" } }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
