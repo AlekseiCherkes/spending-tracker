@@ -1,4 +1,3 @@
-mod types;
 mod schema;
 
 use log::*;
@@ -22,11 +21,29 @@ impl Model {
             rusqlite::Connection::open(path).unwrap()
         };
 
-        schema::init_scheme(&conn);
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+
+        schema::init_schema(&conn);
 
         info!("Model created successfully");
 
         Model { connection: conn }
     }
 
+    //#[cfg(test)]
+    pub fn fill_test_data(&self) {
+        schema::fill_test_data(&self.connection);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::model::Model;
+
+    #[test]
+    fn test_1() {
+        let model = Model::new(true);
+        model.fill_test_data();
+        assert_eq!(6, 6);
+    }
 }

@@ -8,6 +8,7 @@ async fn main() {
     log::info!("Starting command bot...");
 
     let model = model::Model::new(false);
+    model.fill_test_data();
 
     //let bot = Bot::from_env();
     //Command::repl(bot, answer).await;
