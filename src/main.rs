@@ -1,3 +1,5 @@
+mod model;
+
 use teloxide::{prelude::*, utils::command::BotCommands};
 
 #[tokio::main]
@@ -5,9 +7,10 @@ async fn main() {
     pretty_env_logger::init();
     log::info!("Starting command bot...");
 
-    let bot = Bot::from_env();
+    let model = model::Model::new(false);
 
-    Command::repl(bot, answer).await;
+    //let bot = Bot::from_env();
+    //Command::repl(bot, answer).await;
 }
 
 #[derive(BotCommands, Clone)]
