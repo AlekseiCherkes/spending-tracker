@@ -1,4 +1,5 @@
 mod schema;
+mod test_data;
 
 use log::*;
 use rusqlite;
