@@ -1,6 +1,25 @@
+use std::sync::{Arc, Mutex};
 use chrono::Utc;
 use teloxide::prelude::*;
-use teloxide::types::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, UpdateKind};
+use teloxide::types::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup};
+
+struct MyLogic {
+    x: i32
+}
+
+impl MyLogic {
+    pub fn new() -> Self {
+        MyLogic { x: 123 }
+    }
+
+    pub fn my_get(&self) -> i32 {
+        self.x
+    }
+
+    pub fn my_change(&mut self) {
+        self.x += 1;
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -8,6 +27,7 @@ async fn main() {
     log::info!("Starting Spending Tracker bot...");
 
     let bot = Bot::from_env();
+    let business_logic = Arc::new(Mutex::new(MyLogic::new()));
 
     Dispatcher::builder(
         bot.clone(),
@@ -15,6 +35,7 @@ async fn main() {
             .branch(Update::filter_message().endpoint(handle_message))
             .branch(Update::filter_callback_query().endpoint(handle_callback_query)),
     )
+    .dependencies(dptree::deps![business_logic])
     .enable_ctrlc_handler()
     .build()
     .dispatch()
@@ -24,7 +45,13 @@ async fn main() {
 async fn handle_message(
     bot: Bot,
     message: Message,
+    x: Arc<Mutex<MyLogic>>
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    {
+        let mut lock = x.lock().unwrap();
+        lock.my_change();
+    }
+
     if let Some(text) = message.text() {
         if let Ok(amount) = text.parse::<f64>() {
             let timestamp = Utc::now().to_rfc3339();
