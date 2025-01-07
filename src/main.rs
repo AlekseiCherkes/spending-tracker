@@ -1,3 +1,6 @@
+mod bot;
+mod model;
+
 use std::sync::{Arc, Mutex};
 use chrono::Utc;
 use teloxide::prelude::*;
