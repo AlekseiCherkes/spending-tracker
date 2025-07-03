@@ -54,6 +54,16 @@ This document captures key architectural decisions made during the development o
   - Easy to update and audit dependencies
   - Telegram-specific dependencies in separate file
 
+### 7. **Database Access Strategy**
+- **Decision**: Use built-in `sqlite3` module with direct SQL
+- **Rationale**:
+  - No external dependencies (part of Python standard library)
+  - Complete transparency - can see exactly what SQL is executed
+  - Simple and well-established
+  - No ORM complexity or abstraction layers
+  - Easy to understand and debug
+- **Alternative Considered**: SQLAlchemy ORM (rejected for complexity)
+
 ## Current Project Structure
 
 ```
@@ -61,10 +71,12 @@ spending-tracker/
 ├── spending_tracker/           # Main package
 │   ├── __init__.py            # Package metadata
 │   ├── __main__.py            # Entry point (starts bot)
-│   └── bot.py                 # Telegram bot implementation
+│   ├── bot.py                 # Telegram bot implementation
+│   └── dal.py                 # Data Access Layer (SQLite)
 ├── tests/                     # Test suite
 │   ├── __init__.py
-│   └── test_main.py          # Core functionality tests
+│   ├── test_main.py          # Core functionality tests
+│   └── test_dal.py           # Database tests
 ├── scripts/                   # Utility scripts
 │   └── update-deps.sh        # Dependency update script
 ├── requirements*.txt          # Locked dependencies
@@ -86,10 +98,10 @@ spending-tracker/
 - **mypy**: Type checking
 - **pip-tools**: Dependency management
 
-### Future Database Stack
-- **SQLAlchemy 2.0+**: ORM for expense data
-- **aiosqlite**: Async SQLite driver
-- **alembic**: Database migrations (when needed)
+### Database Stack
+- **sqlite3**: Built-in Python SQLite driver (no external dependencies)
+- **Direct SQL**: Raw SQL queries for transparency and control
+- **Simple DAL**: Data Access Layer with basic CRUD operations
 
 ## Key Design Patterns
 
@@ -107,14 +119,22 @@ spending-tracker/
 - Tests verify structure, not execution
 - Avoids hanging tests that start the bot
 - Fast feedback loop for development
+- Database tests use temporary files for isolation
+
+### 4. **Simple Data Access Pattern**
+- Direct SQL queries with sqlite3
+- Transaction handling with context managers
+- Dict-based data representation
+- Comprehensive error handling
 
 ## Future Considerations
 
 ### Planned Features
-1. **Expense Storage**: SQLite database for expense tracking
-2. **Spending Categories**: Categorization of expenses
-3. **Reporting**: Monthly/weekly spending summaries
-4. **Export Features**: CSV/Excel export capabilities
+1. ✅ **User Management**: SQLite database for user storage
+2. **Expense Storage**: Expense tracking with categories
+3. **Spending Categories**: Categorization of expenses
+4. **Reporting**: Monthly/weekly spending summaries
+5. **Export Features**: CSV/Excel export capabilities
 
 ### Potential Architectural Changes
 1. **Multi-user Support**: User session management
@@ -158,6 +178,7 @@ spending-tracker
 | 2024-01 | Remove CLI functionality | Focus on single interface |
 | 2024-01 | pip-tools for dependency locking | Reproducible builds |
 | 2024-01 | Simplified main entry point | Reduced complexity |
+| 2024-01 | sqlite3 with direct SQL | Simplicity, transparency, no external deps |
 
 ---
 
