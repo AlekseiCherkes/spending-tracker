@@ -131,10 +131,11 @@ spending-tracker/
 
 ### Planned Features
 1. ✅ **User Management**: SQLite database for user storage
-2. **Expense Storage**: Expense tracking with categories
-3. **Spending Categories**: Categorization of expenses
-4. **Reporting**: Monthly/weekly spending summaries
-5. **Export Features**: CSV/Excel export capabilities
+2. ✅ **Bot-Database Integration**: `/users` command lists all registered users
+3. **Expense Storage**: Expense tracking with categories
+4. **Spending Categories**: Categorization of expenses
+5. **Reporting**: Monthly/weekly spending summaries
+6. **Export Features**: CSV/Excel export capabilities
 
 ### Potential Architectural Changes
 1. **Multi-user Support**: User session management
@@ -179,6 +180,7 @@ spending-tracker
 | 2024-01 | pip-tools for dependency locking | Reproducible builds |
 | 2024-01 | Simplified main entry point | Reduced complexity |
 | 2024-01 | sqlite3 with direct SQL | Simplicity, transparency, no external deps |
+| 2024-01 | Bot-DAL integration | First database command `/users` implemented |
 
 ---
 

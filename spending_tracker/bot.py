@@ -7,6 +7,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from dotenv import load_dotenv
+from .dal import UserDAL
 
 # Load environment variables
 load_dotenv()
@@ -17,6 +18,9 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Initialize DAL
+dal = UserDAL()
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -42,6 +46,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 /help - Show this help message
 /status - Check bot status
 /about - About this bot
+/users - List all registered users
 
 💡 **Coming Soon:**
 • Add expenses
@@ -56,11 +61,13 @@ This is version 0.1.0 - more features coming soon! 🚀
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show bot status."""
+    user_count = dal.get_user_count()
     await update.message.reply_text(
         "✅ Bot is running!\n"
         "🔋 Status: Online\n"
         "📱 Version: 0.1.0\n"
-        "🐍 Python: 3.13\n\n"
+        "🐍 Python: 3.13\n"
+        f"👥 Registered Users: {user_count}\n\n"
         "Ready to track your expenses! 💰"
     )
 
@@ -92,6 +99,39 @@ Made with ❤️ using modern Python practices!
     await update.message.reply_text(about_text, parse_mode='Markdown')
 
 
+async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List all registered users."""
+    try:
+        users = dal.get_all_users()
+        
+        if not users:
+            await update.message.reply_text(
+                "👥 **Registered Users:**\n\n"
+                "No users registered yet.\n"
+                "Users will appear here when they start using the bot.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Format users list
+        user_list = "👥 **Registered Users:**\n\n"
+        for i, user in enumerate(users, 1):
+            user_list += f"{i}. **{user['name']}**\n"
+            user_list += f"   • ID: {user['id']}\n"
+            user_list += f"   • Telegram ID: {user['telegram_id']}\n\n"
+        
+        user_list += f"📊 **Total Users:** {len(users)}"
+        
+        await update.message.reply_text(user_list, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error retrieving users: {e}")
+        await update.message.reply_text(
+            "❌ Sorry, there was an error retrieving the user list.\n"
+            "Please try again later."
+        )
+
+
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle unknown commands."""
     await update.message.reply_text(
@@ -121,6 +161,7 @@ def run_bot() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("about", about))
+    application.add_handler(CommandHandler("users", users_command))
     
     logger.info("✅ Bot commands registered")
     logger.info("💰 Spending Tracker Bot is ready!")

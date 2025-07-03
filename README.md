@@ -73,8 +73,9 @@ deactivate
 Current bot commands:
 - `/start` - Welcome message and introduction
 - `/help` - Show available commands
-- `/status` - Check bot status
+- `/status` - Check bot status (includes user count)
 - `/about` - Information about the bot
+- `/users` - List all registered users
 
 ## 🔒 Dependency Management
 
