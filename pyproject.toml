@@ -22,6 +22,10 @@ classifiers = [
     "Topic :: Office/Business :: Financial",
 ]
 keywords = ["spending", "tracker", "expenses", "telegram", "bot"]
+dependencies = [
+    "click>=8.0",
+    "python-dotenv>=1.0.0",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -29,6 +33,12 @@ dev = [
     "black>=23.0",
     "flake8>=6.0",
     "mypy>=1.5",
+    "pip-tools>=7.0",
+]
+telegram = [
+    "python-telegram-bot>=20.7",
+    "aiosqlite>=0.19.0",
+    "sqlalchemy>=2.0.0",
 ]
 
 [project.scripts]
