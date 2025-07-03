@@ -1,10 +1,12 @@
-# spending-tracker
-A simple Python module for personal spending tracking.
+# Spending Tracker Telegram Bot
+
+A Telegram bot for personal spending tracking.
 
 ## Getting Started
 
 ### Prerequisites
 - Python 3.13+
+- Telegram Bot Token (get from [@BotFather](https://t.me/BotFather))
 
 ### Installation
 1. Clone the repository
@@ -22,21 +24,26 @@ A simple Python module for personal spending tracking.
    ```
 3. Install dependencies:
    ```bash
-   # Install base dependencies
+   # Install all dependencies (base + telegram)
    pip install -r requirements.txt
+   pip install -r requirements-telegram.txt
    
    # For development work
    pip install -r requirements-dev.txt
-   
-   # For telegram bot features
-   pip install -r requirements-telegram.txt
    ```
 4. Install the package in development mode (optional):
    ```bash
    pip install -e .
    ```
 
-### Running the Module
+### Setting up the Bot
+1. Create a `.env` file in the project root:
+   ```bash
+   TELEGRAM_BOT_TOKEN=your_bot_token_here
+   ```
+2. Get your bot token from [@BotFather](https://t.me/BotFather) on Telegram
+
+### Running the Bot
 ```bash
 # Make sure your virtual environment is activated first!
 # You should see (venv) in your prompt
@@ -44,10 +51,7 @@ A simple Python module for personal spending tracking.
 # Run as a module
 python -m spending_tracker
 
-# Or run the main file directly
-python spending_tracker/__main__.py
-
-# If you installed it as a package:
+# Or if you installed it as a package:
 spending-tracker
 ```
 
@@ -63,6 +67,14 @@ deactivate
 # Check if virtual environment is active
 # Look for (venv) in your prompt
 ```
+
+## 🤖 Bot Commands
+
+Current bot commands:
+- `/start` - Welcome message and introduction
+- `/help` - Show available commands
+- `/status` - Check bot status
+- `/about` - Information about the bot
 
 ## 🔒 Dependency Management
 
@@ -116,16 +128,22 @@ This project uses **pip-tools** for dependency locking to ensure reproducible bu
 ✅ Modern project configuration (pyproject.toml)  
 ✅ Virtual environment setup  
 ✅ Dependency locking with pip-tools  
-🔄 Coming soon: Telegram bot functionality  
+✅ Basic Telegram bot functionality  
 🔄 Coming soon: Database integration  
 🔄 Coming soon: Expense tracking features  
+🔄 Coming soon: Spending categories  
+🔄 Coming soon: Monthly reports  
 
 ## Project Structure
 ```
 spending-tracker/
 ├── spending_tracker/         # Main package directory
 │   ├── __init__.py          # Package initialization
-│   └── __main__.py          # Main entry point
+│   ├── __main__.py          # Main entry point (starts bot)
+│   └── bot.py               # Telegram bot implementation
+├── tests/                   # Test suite
+│   ├── __init__.py
+│   └── test_main.py        # Core functionality tests
 ├── scripts/                 # Development scripts
 │   └── update-deps.sh       # Update dependency lock files
 ├── venv/                    # Virtual environment (excluded from git)
@@ -133,18 +151,52 @@ spending-tracker/
 ├── requirements.txt         # Locked base dependencies
 ├── requirements-dev.txt     # Locked development dependencies
 ├── requirements-telegram.txt # Locked telegram dependencies
+├── ARCHITECTURE.md          # Architecture decisions and rationale
 ├── README.md               # This file
 └── .gitignore              # Git ignore rules
 ```
 
-## Development Plan
+## Architecture
+
+For detailed information about architectural decisions, technology choices, and future considerations, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Development
+
+### Running Tests
+```bash
+pytest tests/ -v
+```
+
+### Code Quality
+```bash
+# Format code
+black spending_tracker/
+
+# Lint code
+flake8 spending_tracker/
+
+# Type checking
+mypy spending_tracker/
+```
+
+### Development Plan
 We're building this step by step:
 1. ✅ Basic Python module structure
 2. ✅ Python 3.13+ requirement with modern configuration
 3. ✅ Virtual environment setup
 4. ✅ Dependency locking with pip-tools
-5. 🔄 Add basic CLI interface
-6. 🔄 Add data models
-7. 🔄 Add Telegram bot integration
-8. 🔄 Add database functionality
-9. 🔄 Add expense tracking features
+5. ✅ Basic Telegram bot interface
+6. ✅ Focused testing strategy
+7. 🔄 Add database functionality (SQLite + SQLAlchemy)
+8. 🔄 Add expense tracking features
+9. 🔄 Add spending categories
+10. 🔄 Add reporting and analytics
+
+## Contributing
+
+1. Review [ARCHITECTURE.md](ARCHITECTURE.md) for context
+2. Create a feature branch
+3. Add tests first (TDD approach)
+4. Implement feature
+5. Run full test suite
+6. Update documentation if needed
