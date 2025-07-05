@@ -7,7 +7,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from dotenv import load_dotenv
-from .dal import UserDAL
+from .dal import SpendingTrackerDAL
 
 # Load environment variables
 load_dotenv()
@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize DAL
-dal = UserDAL()
+dal = SpendingTrackerDAL()
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

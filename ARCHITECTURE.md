@@ -64,6 +64,16 @@ This document captures key architectural decisions made during the development o
   - Easy to understand and debug
 - **Alternative Considered**: SQLAlchemy ORM (rejected for complexity)
 
+### 8. **Single DAL Class Architecture**
+- **Decision**: Use a single DAL class instead of separate DAL classes per table
+- **Rationale**:
+  - Simplified connection management and sharing
+  - Easier handling of complex queries across multiple tables
+  - Cleaner transaction management for multi-table operations
+  - Reduced code complexity and coupling
+  - Single point of database configuration and connection pooling
+- **Alternative Considered**: Multiple DAL classes (rejected for complexity in joins)
+
 ## Current Project Structure
 
 ```
@@ -101,7 +111,23 @@ spending-tracker/
 ### Database Stack
 - **sqlite3**: Built-in Python SQLite driver (no external dependencies)
 - **Direct SQL**: Raw SQL queries for transparency and control
-- **Simple DAL**: Data Access Layer with basic CRUD operations
+- **Single DAL**: Unified Data Access Layer with all table operations
+
+## Database Schema
+
+### Tables
+1. **users**: User information and Telegram integration
+2. **currencies**: Currency definitions (EUR, USD, BYN, etc.)
+3. **accounts**: Financial accounts with currency and optional IBAN
+4. **categories**: Global spending categories with sort ordering
+5. **spendings**: Individual spending records with full tracking
+
+### Key Relationships
+- **accounts** → **currencies** (many-to-one)
+- **accounts** ↔ **users** (many-to-many via account_users)
+- **spendings** → **accounts** (many-to-one)
+- **spendings** → **categories** (many-to-one)
+- **spendings** → **users** (many-to-one, reporter)
 
 ## Key Design Patterns
 
@@ -132,10 +158,12 @@ spending-tracker/
 ### Planned Features
 1. ✅ **User Management**: SQLite database for user storage
 2. ✅ **Bot-Database Integration**: `/users` command lists all registered users
-3. **Expense Storage**: Expense tracking with categories
-4. **Spending Categories**: Categorization of expenses
-5. **Reporting**: Monthly/weekly spending summaries
-6. **Export Features**: CSV/Excel export capabilities
+3. ✅ **Currency Management**: Currency definitions and operations
+4. ✅ **Account Management**: Financial accounts with currency support
+5. **Category Management**: Spending categories with sort ordering
+6. **Expense Storage**: Expense tracking with full relationships
+7. **Reporting**: Monthly/weekly spending summaries
+8. **Export Features**: CSV/Excel export capabilities
 
 ### Potential Architectural Changes
 1. **Multi-user Support**: User session management
@@ -181,6 +209,7 @@ spending-tracker
 | 2024-01 | Simplified main entry point | Reduced complexity |
 | 2024-01 | sqlite3 with direct SQL | Simplicity, transparency, no external deps |
 | 2024-01 | Bot-DAL integration | First database command `/users` implemented |
+| 2024-01 | Single DAL class architecture | Simplified connection management and complex queries |
 
 ---
 
