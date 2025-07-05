@@ -7,7 +7,7 @@ This document captures key architectural decisions made during the development o
 
 ### 1. **Telegram Bot as Primary Interface**
 - **Decision**: Use Telegram Bot API as the main user interface
-- **Rationale**: 
+- **Rationale**:
   - Provides instant messaging experience
   - No need for separate frontend development
   - Built-in user authentication via Telegram
@@ -15,7 +15,7 @@ This document captures key architectural decisions made during the development o
 - **Alternative Considered**: CLI interface (removed for simplicity)
 
 ### 2. **Python 3.13+ Minimum Version**
-- **Decision**: Require Python 3.13+ 
+- **Decision**: Require Python 3.13+
 - **Rationale**:
   - Latest performance improvements
   - Modern language features
@@ -186,9 +186,16 @@ spending-tracker/
 ./scripts/update-deps.sh
 ```
 
-### Testing
+### Code Quality
 ```bash
-pytest tests/ -v
+# Run all quality checks (format, lint, type check, tests)
+./scripts/dev.sh check
+
+# Auto-fix formatting issues
+./scripts/dev.sh fix
+
+# Run tests only
+./scripts/dev.sh test
 ```
 
 ### Running the Bot
@@ -197,6 +204,43 @@ python -m spending_tracker
 # or
 spending-tracker
 ```
+
+## Development Tooling
+
+### Code Quality Stack
+- **black**: Code formatting (88-character line length)
+- **isort**: Import sorting (compatible with black)
+- **flake8**: Linting and code style enforcement
+- **mypy**: Static type checking
+- **pre-commit**: Automatic quality checks on git commits
+
+### Development Scripts
+- `./scripts/dev.sh`: Unified development utility with colored output
+- `./scripts/format-code.sh`: Run all quality checks
+- `./scripts/fix-code.sh`: Auto-fix formatting issues
+
+### Pre-commit Integration
+Automatically runs quality checks on every git commit:
+- Trailing whitespace removal
+- End-of-file fixing
+- YAML validation
+- Code formatting (black)
+- Import sorting (isort)
+- Linting (flake8)
+- Type checking (mypy)
+
+### Configuration Files
+- `pyproject.toml`: Tool configuration (black, isort, mypy, pytest)
+- `.flake8`: Flake8-specific configuration (doesn't support pyproject.toml)
+- `.pre-commit-config.yaml`: Pre-commit hooks configuration
+- `requirements-dev.txt`: Development dependencies with version locking
+
+### Quality Standards
+- 100% type coverage with mypy
+- PEP 8 compliance via flake8
+- Consistent formatting via black
+- Sorted imports via isort
+- Clean git history via pre-commit hooks
 
 ## Decision Log
 
@@ -210,8 +254,10 @@ spending-tracker
 | 2024-01 | sqlite3 with direct SQL | Simplicity, transparency, no external deps |
 | 2024-01 | Bot-DAL integration | First database command `/users` implemented |
 | 2024-01 | Single DAL class architecture | Simplified connection management and complex queries |
+| 2024-01 | Standard Python tooling setup | Replace custom scripts with black, isort, flake8, mypy |
+| 2024-01 | Pre-commit hooks integration | Automatic quality checks and consistent codebase |
 
 ---
 
 *Last updated: January 2024*
-*Next review: When adding database functionality* 
+*Next review: When adding Category table functionality*

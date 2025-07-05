@@ -14,11 +14,11 @@ A Telegram bot for personal spending tracking.
    ```bash
    # Create virtual environment
    python3 -m venv venv
-   
+
    # Activate virtual environment
    # On macOS/Linux:
    source venv/bin/activate
-   
+
    # On Windows:
    venv\Scripts\activate
    ```
@@ -27,7 +27,7 @@ A Telegram bot for personal spending tracking.
    # Install all dependencies (base + telegram)
    pip install -r requirements.txt
    pip install -r requirements-telegram.txt
-   
+
    # For development work
    pip install -r requirements-dev.txt
    ```
@@ -103,7 +103,7 @@ This project uses **pip-tools** for dependency locking to ensure reproducible bu
    ```bash
    # Option 1: Use the script
    ./scripts/update-deps.sh
-   
+
    # Option 2: Manual update
    pip-compile pyproject.toml
    pip-compile --extra dev pyproject.toml --output-file requirements-dev.txt
@@ -124,16 +124,16 @@ This project uses **pip-tools** for dependency locking to ensure reproducible bu
 - ✅ **CI/CD** - Reliable automated builds
 
 ## Current Status
-✅ Basic Python module structure  
-✅ Python 3.13+ requirement  
-✅ Modern project configuration (pyproject.toml)  
-✅ Virtual environment setup  
-✅ Dependency locking with pip-tools  
-✅ Basic Telegram bot functionality  
-🔄 Coming soon: Database integration  
-🔄 Coming soon: Expense tracking features  
-🔄 Coming soon: Spending categories  
-🔄 Coming soon: Monthly reports  
+✅ Basic Python module structure
+✅ Python 3.13+ requirement
+✅ Modern project configuration (pyproject.toml)
+✅ Virtual environment setup
+✅ Dependency locking with pip-tools
+✅ Basic Telegram bot functionality
+🔄 Coming soon: Database integration
+🔄 Coming soon: Expense tracking features
+🔄 Coming soon: Spending categories
+🔄 Coming soon: Monthly reports
 
 ## Project Structure
 ```

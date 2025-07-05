@@ -1,1 +1,1 @@
-"""Tests for the spending tracker module.""" 
+"""Tests for the spending tracker module."""
