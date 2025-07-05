@@ -19,4 +19,4 @@ echo "🖤 Fixing code formatting with black..."
 python -m black spending_tracker/ tests/
 
 echo "✅ Code formatting fixed!"
-echo "💡 You can now run './scripts/format-code.sh' to check quality." 
+echo "💡 You can now run './scripts/format-code.sh' to check quality."

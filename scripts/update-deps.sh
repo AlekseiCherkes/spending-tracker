@@ -21,4 +21,4 @@ echo "  pip install -r requirements-telegram.txt     # Telegram bot dependencies
 echo ""
 echo "Or use pip-sync for exact environment matching:"
 echo "  pip-sync requirements.txt                     # Sync to exact base deps"
-echo "  pip-sync requirements-dev.txt                 # Sync to exact dev deps" 
+echo "  pip-sync requirements-dev.txt                 # Sync to exact dev deps"

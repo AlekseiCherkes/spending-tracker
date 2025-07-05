@@ -30,4 +30,4 @@ python -m mypy spending_tracker/
 echo "🧪 Running tests..."
 python -m pytest tests/ -v
 
-echo "✅ All checks passed!" 
+echo "✅ All checks passed!"

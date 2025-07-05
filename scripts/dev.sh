@@ -61,21 +61,21 @@ check_venv() {
 # Install development dependencies
 install_deps() {
     print_section "Installing Development Dependencies"
-    
+
     if ! check_venv; then
         exit 1
     fi
-    
+
     pip install -r requirements-dev.txt
     pip install -r requirements.txt
-    
+
     print_success "Dependencies installed"
 }
 
 # Setup development environment
 setup_dev() {
     print_section "Setting up Development Environment"
-    
+
     # Create virtual environment if it doesn't exist
     if [[ ! -d "venv" ]]; then
         print_section "Creating virtual environment"
@@ -85,38 +85,38 @@ setup_dev() {
         echo "Then run: $0 setup"
         exit 0
     fi
-    
+
     if ! check_venv; then
         exit 1
     fi
-    
+
     # Install dependencies
     install_deps
-    
+
     # Install pre-commit hooks
     print_section "Installing pre-commit hooks"
     pre-commit install
-    
+
     print_success "Development environment ready!"
 }
 
 # Clean build artifacts
 clean_build() {
     print_section "Cleaning Build Artifacts"
-    
+
     # Remove Python cache
     find . -type d -name "__pycache__" -exec rm -rf {} +
     find . -type f -name "*.pyc" -delete
-    
+
     # Remove build directories
     rm -rf build/
     rm -rf dist/
     rm -rf *.egg-info/
-    
+
     # Remove test cache
     rm -rf .pytest_cache/
     rm -rf .mypy_cache/
-    
+
     print_success "Build artifacts cleaned"
 }
 
@@ -153,4 +153,4 @@ case "${1:-help}" in
         show_help
         exit 1
         ;;
-esac 
+esac
