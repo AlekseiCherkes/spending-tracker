@@ -59,6 +59,17 @@ class SpendingTrackerDAL:
             """
             )
 
+            # Categories table
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS categories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    sort_order INTEGER NOT NULL DEFAULT 0
+                )
+            """
+            )
+
             conn.commit()
 
     # =================
@@ -393,6 +404,178 @@ class SpendingTrackerDAL:
             cursor = conn.execute("SELECT COUNT(*) FROM accounts")
             result = cursor.fetchone()
             return int(result[0]) if result else 0
+
+    # =================
+    # CATEGORY OPERATIONS
+    # =================
+
+    def create_category(self, name: str, sort_order: int = 0) -> int:
+        """
+        Create a new category.
+
+        Args:
+            name: Category name
+            sort_order: Sort order for UI display (default: 0)
+
+        Returns:
+            The ID of the created category
+
+        Raises:
+            sqlite3.IntegrityError: If category name already exists
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "INSERT INTO categories (name, sort_order) VALUES (?, ?)",
+                (name, sort_order),
+            )
+            conn.commit()
+            lastrowid = cursor.lastrowid
+            if lastrowid is None:
+                raise RuntimeError("Failed to get ID of created category")
+            return lastrowid
+
+    def get_category_by_id(self, category_id: int) -> Optional[dict]:
+        """
+        Get a category by its ID.
+
+        Args:
+            category_id: Category ID
+
+        Returns:
+            Category data as dict or None if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT id, name, sort_order FROM categories WHERE id = ?",
+                (category_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_category_by_name(self, name: str) -> Optional[dict]:
+        """
+        Get a category by its name.
+
+        Args:
+            name: Category name
+
+        Returns:
+            Category data as dict or None if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT id, name, sort_order FROM categories WHERE name = ?",
+                (name,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_all_categories(self) -> List[dict]:
+        """
+        Get all categories.
+
+        Returns:
+            List of category data as dicts, sorted by sort_order then name
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT id, name, sort_order FROM categories ORDER BY sort_order, name"
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def update_category(self, category_id: int, name: str, sort_order: int) -> bool:
+        """
+        Update a category.
+
+        Args:
+            category_id: Category ID
+            name: New name
+            sort_order: New sort order
+
+        Returns:
+            True if category was updated, False if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "UPDATE categories SET name = ?, sort_order = ? WHERE id = ?",
+                (name, sort_order, category_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_category(self, category_id: int) -> bool:
+        """
+        Delete a category.
+
+        Args:
+            category_id: Category ID
+
+        Returns:
+            True if category was deleted, False if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def category_exists(self, name: str) -> bool:
+        """
+        Check if a category exists by name.
+
+        Args:
+            name: Category name to check
+
+        Returns:
+            True if category exists, False otherwise
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT 1 FROM categories WHERE name = ?", (name,))
+            return cursor.fetchone() is not None
+
+    def get_category_count(self) -> int:
+        """
+        Get the total number of categories.
+
+        Returns:
+            Number of categories
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT COUNT(*) FROM categories")
+            result = cursor.fetchone()
+            return int(result[0]) if result else 0
+
+    def reorder_categories(self, category_orders: List[tuple[int, int]]) -> bool:
+        """
+        Reorder categories by updating their sort_order values.
+
+        Args:
+            category_orders: List of (category_id, new_sort_order) tuples
+
+        Returns:
+            True if all categories were updated successfully
+        """
+        with self._get_connection() as conn:
+            try:
+                # First, validate all category IDs exist
+                for category_id, _ in category_orders:
+                    cursor = conn.execute(
+                        "SELECT 1 FROM categories WHERE id = ?", (category_id,)
+                    )
+                    if cursor.fetchone() is None:
+                        return False
+
+                # If all IDs are valid, proceed with updates
+                for category_id, sort_order in category_orders:
+                    conn.execute(
+                        "UPDATE categories SET sort_order = ? WHERE id = ?",
+                        (sort_order, category_id),
+                    )
+                conn.commit()
+                return True
+            except Exception:
+                conn.rollback()
+                return False
 
     # =================
     # USER OPERATIONS

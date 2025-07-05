@@ -565,3 +565,189 @@ class TestSpendingTrackerDAL:
 
         self.dal.delete_account(account_id)
         assert self.dal.get_account_count() == 2
+
+    # =================
+    # CATEGORY TESTS
+    # =================
+
+    def test_create_category(self):
+        """Test creating a new category."""
+        category_id = self.dal.create_category("Food")
+
+        assert category_id is not None
+        assert category_id > 0
+
+        # Verify category was created
+        category = self.dal.get_category_by_id(category_id)
+        assert category is not None
+        assert category["name"] == "Food"
+        assert category["sort_order"] == 0
+
+    def test_create_category_with_sort_order(self):
+        """Test creating a category with custom sort order."""
+        category_id = self.dal.create_category("Transport", 10)
+
+        category = self.dal.get_category_by_id(category_id)
+        assert category is not None
+        assert category["name"] == "Transport"
+        assert category["sort_order"] == 10
+
+    def test_create_category_duplicate_name(self):
+        """Test creating a category with duplicate name raises error."""
+        self.dal.create_category("Food")
+
+        with pytest.raises(sqlite3.IntegrityError):
+            self.dal.create_category("Food")
+
+    def test_get_category_by_id(self):
+        """Test retrieving a category by ID."""
+        category_id = self.dal.create_category("Entertainment", 5)
+
+        category = self.dal.get_category_by_id(category_id)
+        assert category is not None
+        assert category["id"] == category_id
+        assert category["name"] == "Entertainment"
+        assert category["sort_order"] == 5
+
+    def test_get_category_by_id_not_found(self):
+        """Test retrieving a non-existent category by ID."""
+        category = self.dal.get_category_by_id(999)
+        assert category is None
+
+    def test_get_category_by_name(self):
+        """Test retrieving a category by name."""
+        category_id = self.dal.create_category("Healthcare", 3)
+
+        category = self.dal.get_category_by_name("Healthcare")
+        assert category is not None
+        assert category["id"] == category_id
+        assert category["name"] == "Healthcare"
+        assert category["sort_order"] == 3
+
+    def test_get_category_by_name_not_found(self):
+        """Test retrieving a non-existent category by name."""
+        category = self.dal.get_category_by_name("NonExistent")
+        assert category is None
+
+    def test_get_all_categories(self):
+        """Test retrieving all categories."""
+        # Initially empty
+        categories = self.dal.get_all_categories()
+        assert len(categories) == 0
+
+        # Add categories with different sort orders
+        self.dal.create_category("Food", 1)
+        self.dal.create_category("Transport", 2)
+        self.dal.create_category("Entertainment", 1)  # Same sort order as Food
+
+        categories = self.dal.get_all_categories()
+        assert len(categories) == 3
+        # Should be sorted by sort_order, then name
+        assert (
+            categories[0]["name"] == "Entertainment"
+        )  # sort_order=1, name comes first
+        assert categories[1]["name"] == "Food"  # sort_order=1, name comes second
+        assert categories[2]["name"] == "Transport"  # sort_order=2
+
+    def test_update_category(self):
+        """Test updating a category."""
+        category_id = self.dal.create_category("Food", 1)
+
+        # Update the category
+        result = self.dal.update_category(category_id, "Groceries", 5)
+        assert result is True
+
+        # Verify the update
+        category = self.dal.get_category_by_id(category_id)
+        assert category["name"] == "Groceries"
+        assert category["sort_order"] == 5
+
+    def test_update_category_not_found(self):
+        """Test updating a non-existent category."""
+        result = self.dal.update_category(999, "New Name", 1)
+        assert result is False
+
+    def test_delete_category(self):
+        """Test deleting a category."""
+        category_id = self.dal.create_category("Delete Me", 1)
+
+        # Delete the category
+        result = self.dal.delete_category(category_id)
+        assert result is True
+
+        # Verify the category is gone
+        category = self.dal.get_category_by_id(category_id)
+        assert category is None
+
+    def test_delete_category_not_found(self):
+        """Test deleting a non-existent category."""
+        result = self.dal.delete_category(999)
+        assert result is False
+
+    def test_category_exists(self):
+        """Test checking if a category exists."""
+        # Category doesn't exist yet
+        assert self.dal.category_exists("Food") is False
+
+        # Create category
+        self.dal.create_category("Food")
+
+        # Category exists now
+        assert self.dal.category_exists("Food") is True
+        assert self.dal.category_exists("Transport") is False
+
+    def test_get_category_count(self):
+        """Test getting the category count."""
+        # Initially empty
+        assert self.dal.get_category_count() == 0
+
+        # Add categories
+        self.dal.create_category("Food")
+        assert self.dal.get_category_count() == 1
+
+        self.dal.create_category("Transport")
+        assert self.dal.get_category_count() == 2
+
+        # Delete a category
+        category_id = self.dal.create_category("Entertainment")
+        assert self.dal.get_category_count() == 3
+
+        self.dal.delete_category(category_id)
+        assert self.dal.get_category_count() == 2
+
+    def test_reorder_categories(self):
+        """Test reordering categories."""
+        # Create categories
+        food_id = self.dal.create_category("Food", 1)
+        transport_id = self.dal.create_category("Transport", 2)
+        entertainment_id = self.dal.create_category("Entertainment", 3)
+
+        # Reorder categories
+        result = self.dal.reorder_categories(
+            [(food_id, 3), (transport_id, 1), (entertainment_id, 2)]
+        )
+        assert result is True
+
+        # Verify new order
+        categories = self.dal.get_all_categories()
+        assert len(categories) == 3
+        assert categories[0]["name"] == "Transport"  # sort_order=1
+        assert categories[1]["name"] == "Entertainment"  # sort_order=2
+        assert categories[2]["name"] == "Food"  # sort_order=3
+
+    def test_reorder_categories_invalid_id(self):
+        """Test reordering categories with invalid ID."""
+        food_id = self.dal.create_category("Food", 1)
+
+        # Try to reorder with invalid category ID
+        result = self.dal.reorder_categories([(food_id, 2), (999, 1)])  # Invalid ID
+        assert result is False
+
+        # Verify original order is maintained
+        category = self.dal.get_category_by_id(food_id)
+        assert category["sort_order"] == 1
+
+    def test_reorder_categories_empty_list(self):
+        """Test reordering categories with empty list."""
+        result = self.dal.reorder_categories([])
+        assert result is True
