@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import tempfile
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -751,3 +752,535 @@ class TestSpendingTrackerDAL:
         """Test reordering categories with empty list."""
         result = self.dal.reorder_categories([])
         assert result is True
+
+    # =================
+    # SPENDING TESTS
+    # =================
+
+    def _create_spending_dependencies(self):
+        """Helper method to create spending dependencies."""
+        currency_id = self.dal.create_currency("USD")
+        account_id = self.dal.create_account(currency_id, "Test Account")
+        category_id = self.dal.create_category("Food")
+        user_id = self.dal.create_user("Test User", 12345)
+        return currency_id, account_id, category_id, user_id
+
+    def test_create_spending(self):
+        """Test creating a new spending entry."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        spending_id = self.dal.create_spending(
+            account_id=account_id,
+            amount=25.50,
+            category_id=category_id,
+            reporter_id=user_id,
+            notes="Lunch at restaurant",
+        )
+
+        assert spending_id is not None
+        assert spending_id > 0
+
+        # Verify spending was created
+        spending = self.dal.get_spending_by_id(spending_id)
+        assert spending is not None
+        assert spending["amount"] == 25.50
+        assert spending["account_id"] == account_id
+        assert spending["category_id"] == category_id
+        assert spending["reporter_id"] == user_id
+        assert spending["notes"] == "Lunch at restaurant"
+        assert spending["timestamp"] is not None
+
+    def test_create_spending_with_timestamp(self):
+        """Test creating a spending entry with custom timestamp."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+        custom_timestamp = datetime(2023, 12, 25, 15, 30, 0)
+
+        spending_id = self.dal.create_spending(
+            account_id=account_id,
+            amount=100.00,
+            category_id=category_id,
+            reporter_id=user_id,
+            notes="Christmas gift",
+            timestamp=custom_timestamp,
+        )
+
+        spending = self.dal.get_spending_by_id(spending_id)
+        assert spending is not None
+        # SQLite stores datetime without 'T' separator
+        assert spending["timestamp"] == custom_timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+    def test_create_spending_without_notes(self):
+        """Test creating a spending entry without notes."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        spending_id = self.dal.create_spending(
+            account_id=account_id,
+            amount=15.00,
+            category_id=category_id,
+            reporter_id=user_id,
+        )
+
+        spending = self.dal.get_spending_by_id(spending_id)
+        assert spending is not None
+        assert spending["notes"] is None
+
+    def test_create_spending_invalid_account(self):
+        """Test creating a spending entry with invalid account ID raises error."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        with pytest.raises(sqlite3.IntegrityError):
+            self.dal.create_spending(
+                account_id=999,  # Invalid account ID
+                amount=25.50,
+                category_id=category_id,
+                reporter_id=user_id,
+            )
+
+    def test_get_spending_by_id(self):
+        """Test retrieving a spending entry by ID."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        spending_id = self.dal.create_spending(
+            account_id=account_id,
+            amount=50.75,
+            category_id=category_id,
+            reporter_id=user_id,
+            notes="Grocery shopping",
+        )
+
+        spending = self.dal.get_spending_by_id(spending_id)
+        assert spending is not None
+        assert spending["id"] == spending_id
+        assert spending["amount"] == 50.75
+        assert spending["notes"] == "Grocery shopping"
+
+    def test_get_spending_by_id_not_found(self):
+        """Test retrieving a non-existent spending entry by ID."""
+        spending = self.dal.get_spending_by_id(999)
+        assert spending is None
+
+    def test_get_spending_by_id_with_details(self):
+        """Test retrieving a spending entry with details."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        spending_id = self.dal.create_spending(
+            account_id=account_id,
+            amount=75.25,
+            category_id=category_id,
+            reporter_id=user_id,
+            notes="Dinner out",
+        )
+
+        spending = self.dal.get_spending_by_id_with_details(spending_id)
+        assert spending is not None
+        assert spending["id"] == spending_id
+        assert spending["amount"] == 75.25
+        assert spending["notes"] == "Dinner out"
+        assert spending["account_name"] == "Test Account"
+        assert spending["category_name"] == "Food"
+        assert spending["reporter_name"] == "Test User"
+        assert spending["reporter_telegram_id"] == 12345
+        assert spending["currency_code"] == "USD"
+
+    def test_get_spending_by_id_with_details_not_found(self):
+        """Test retrieving a non-existent spending entry with details."""
+        spending = self.dal.get_spending_by_id_with_details(999)
+        assert spending is None
+
+    def test_get_all_spending(self):
+        """Test retrieving all spending entries."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Initially empty
+        spending_list = self.dal.get_all_spending()
+        assert len(spending_list) == 0
+
+        # Create spending entries
+        spending1_id = self.dal.create_spending(
+            account_id, 10.00, category_id, user_id, "Coffee"
+        )
+        spending2_id = self.dal.create_spending(
+            account_id, 20.00, category_id, user_id, "Lunch"
+        )
+
+        spending_list = self.dal.get_all_spending()
+        assert len(spending_list) == 2
+        # Should be sorted by timestamp descending (newest first)
+        assert spending_list[0]["id"] == spending2_id
+        assert spending_list[1]["id"] == spending1_id
+
+    def test_get_all_spending_with_limit(self):
+        """Test retrieving all spending entries with limit."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create multiple spending entries
+        for i in range(5):
+            self.dal.create_spending(
+                account_id, 10.00 + i, category_id, user_id, f"Purchase {i}"
+            )
+
+        spending_list = self.dal.get_all_spending(limit=3)
+        assert len(spending_list) == 3
+
+    def test_get_all_spending_with_details(self):
+        """Test retrieving all spending entries with details."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        spending_id = self.dal.create_spending(
+            account_id, 30.00, category_id, user_id, "Groceries"
+        )
+
+        spending_list = self.dal.get_all_spending_with_details()
+        assert len(spending_list) == 1
+        assert spending_list[0]["id"] == spending_id
+        assert spending_list[0]["account_name"] == "Test Account"
+        assert spending_list[0]["category_name"] == "Food"
+        assert spending_list[0]["reporter_name"] == "Test User"
+        assert spending_list[0]["currency_code"] == "USD"
+
+    def test_get_spending_by_account(self):
+        """Test retrieving spending entries by account."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create another account
+        account2_id = self.dal.create_account(currency_id, "Account 2")
+
+        # Create spending for both accounts
+        spending1_id = self.dal.create_spending(
+            account_id, 10.00, category_id, user_id, "Account 1"
+        )
+        spending2_id = self.dal.create_spending(
+            account2_id, 20.00, category_id, user_id, "Account 2"
+        )
+
+        # Get spending for account 1
+        spending_list = self.dal.get_spending_by_account(account_id)
+        assert len(spending_list) == 1
+        assert spending_list[0]["id"] == spending1_id
+
+        # Get spending for account 2
+        spending_list = self.dal.get_spending_by_account(account2_id)
+        assert len(spending_list) == 1
+        assert spending_list[0]["id"] == spending2_id
+
+    def test_get_spending_by_category(self):
+        """Test retrieving spending entries by category."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create another category
+        category2_id = self.dal.create_category("Transport")
+
+        # Create spending for both categories
+        spending1_id = self.dal.create_spending(
+            account_id, 10.00, category_id, user_id, "Food"
+        )
+        spending2_id = self.dal.create_spending(
+            account_id, 20.00, category2_id, user_id, "Transport"
+        )
+
+        # Get spending for Food category
+        spending_list = self.dal.get_spending_by_category(category_id)
+        assert len(spending_list) == 1
+        assert spending_list[0]["id"] == spending1_id
+
+        # Get spending for Transport category
+        spending_list = self.dal.get_spending_by_category(category2_id)
+        assert len(spending_list) == 1
+        assert spending_list[0]["id"] == spending2_id
+
+    def test_get_spending_by_reporter(self):
+        """Test retrieving spending entries by reporter."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create another user
+        user2_id = self.dal.create_user("User 2", 67890)
+
+        # Create spending for both users
+        spending1_id = self.dal.create_spending(
+            account_id, 10.00, category_id, user_id, "User 1"
+        )
+        spending2_id = self.dal.create_spending(
+            account_id, 20.00, category_id, user2_id, "User 2"
+        )
+
+        # Get spending for user 1
+        spending_list = self.dal.get_spending_by_reporter(user_id)
+        assert len(spending_list) == 1
+        assert spending_list[0]["id"] == spending1_id
+
+        # Get spending for user 2
+        spending_list = self.dal.get_spending_by_reporter(user2_id)
+        assert len(spending_list) == 1
+        assert spending_list[0]["id"] == spending2_id
+
+    def test_get_spending_by_date_range(self):
+        """Test retrieving spending entries by date range."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create spending entries with different timestamps
+        now = datetime.now()
+        yesterday = now - timedelta(days=1)
+        tomorrow = now + timedelta(days=1)
+
+        self.dal.create_spending(
+            account_id, 10.00, category_id, user_id, "Yesterday", yesterday
+        )
+        spending2_id = self.dal.create_spending(
+            account_id, 20.00, category_id, user_id, "Today", now
+        )
+        self.dal.create_spending(
+            account_id, 30.00, category_id, user_id, "Tomorrow", tomorrow
+        )
+
+        # Get spending for today only
+        spending_list = self.dal.get_spending_by_date_range(
+            now, now + timedelta(hours=1)
+        )
+        assert len(spending_list) == 1
+        assert spending_list[0]["id"] == spending2_id
+
+        # Get spending for yesterday and today
+        spending_list = self.dal.get_spending_by_date_range(
+            yesterday, now + timedelta(hours=1)
+        )
+        assert len(spending_list) == 2
+
+    def test_update_spending(self):
+        """Test updating a spending entry."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create another category
+        category2_id = self.dal.create_category("Transport")
+
+        spending_id = self.dal.create_spending(
+            account_id, 10.00, category_id, user_id, "Original"
+        )
+
+        # Update the spending
+        result = self.dal.update_spending(
+            spending_id, account_id, 25.00, category2_id, user_id, "Updated"
+        )
+        assert result is True
+
+        # Verify the update
+        spending = self.dal.get_spending_by_id(spending_id)
+        assert spending["amount"] == 25.00
+        assert spending["category_id"] == category2_id
+        assert spending["notes"] == "Updated"
+
+    def test_update_spending_not_found(self):
+        """Test updating a non-existent spending entry."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        result = self.dal.update_spending(
+            999, account_id, 25.00, category_id, user_id, "Updated"
+        )
+        assert result is False
+
+    def test_delete_spending(self):
+        """Test deleting a spending entry."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        spending_id = self.dal.create_spending(
+            account_id, 10.00, category_id, user_id, "Delete me"
+        )
+
+        # Delete the spending
+        result = self.dal.delete_spending(spending_id)
+        assert result is True
+
+        # Verify the spending is gone
+        spending = self.dal.get_spending_by_id(spending_id)
+        assert spending is None
+
+    def test_delete_spending_not_found(self):
+        """Test deleting a non-existent spending entry."""
+        result = self.dal.delete_spending(999)
+        assert result is False
+
+    def test_spending_exists(self):
+        """Test checking if a spending entry exists."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Spending doesn't exist yet
+        assert self.dal.spending_exists(999) is False
+
+        # Create spending
+        spending_id = self.dal.create_spending(
+            account_id, 10.00, category_id, user_id, "Test"
+        )
+
+        # Spending exists now
+        assert self.dal.spending_exists(spending_id) is True
+        assert self.dal.spending_exists(999) is False
+
+    def test_get_spending_count(self):
+        """Test getting the spending count."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Initially empty
+        assert self.dal.get_spending_count() == 0
+
+        # Add spending entries
+        self.dal.create_spending(account_id, 10.00, category_id, user_id, "First")
+        assert self.dal.get_spending_count() == 1
+
+        self.dal.create_spending(account_id, 20.00, category_id, user_id, "Second")
+        assert self.dal.get_spending_count() == 2
+
+        # Delete a spending entry
+        spending_id = self.dal.create_spending(
+            account_id, 30.00, category_id, user_id, "Third"
+        )
+        assert self.dal.get_spending_count() == 3
+
+        self.dal.delete_spending(spending_id)
+        assert self.dal.get_spending_count() == 2
+
+    def test_get_spending_total_by_account(self):
+        """Test getting total spending by account."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create another account
+        account2_id = self.dal.create_account(currency_id, "Account 2")
+
+        # Initially zero
+        assert self.dal.get_spending_total_by_account(account_id) == 0.0
+
+        # Add spending to account 1
+        self.dal.create_spending(account_id, 10.00, category_id, user_id, "First")
+        self.dal.create_spending(account_id, 20.00, category_id, user_id, "Second")
+
+        # Add spending to account 2
+        self.dal.create_spending(account2_id, 30.00, category_id, user_id, "Third")
+
+        # Check totals
+        assert self.dal.get_spending_total_by_account(account_id) == 30.0
+        assert self.dal.get_spending_total_by_account(account2_id) == 30.0
+
+    def test_get_spending_total_by_category(self):
+        """Test getting total spending by category."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create another category
+        category2_id = self.dal.create_category("Transport")
+
+        # Initially zero
+        assert self.dal.get_spending_total_by_category(category_id) == 0.0
+
+        # Add spending to Food category
+        self.dal.create_spending(account_id, 15.00, category_id, user_id, "Food 1")
+        self.dal.create_spending(account_id, 25.00, category_id, user_id, "Food 2")
+
+        # Add spending to Transport category
+        self.dal.create_spending(
+            account_id, 35.00, category2_id, user_id, "Transport 1"
+        )
+
+        # Check totals
+        assert self.dal.get_spending_total_by_category(category_id) == 40.0
+        assert self.dal.get_spending_total_by_category(category2_id) == 35.0
+
+    def test_get_spending_total_by_reporter(self):
+        """Test getting total spending by reporter."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create another user
+        user2_id = self.dal.create_user("User 2", 67890)
+
+        # Initially zero
+        assert self.dal.get_spending_total_by_reporter(user_id) == 0.0
+
+        # Add spending by user 1
+        self.dal.create_spending(
+            account_id, 12.00, category_id, user_id, "User 1 - First"
+        )
+        self.dal.create_spending(
+            account_id, 18.00, category_id, user_id, "User 1 - Second"
+        )
+
+        # Add spending by user 2
+        self.dal.create_spending(
+            account_id, 25.00, category_id, user2_id, "User 2 - First"
+        )
+
+        # Check totals
+        assert self.dal.get_spending_total_by_reporter(user_id) == 30.0
+        assert self.dal.get_spending_total_by_reporter(user2_id) == 25.0
+
+    def test_get_spending_total_by_date_range(self):
+        """Test getting total spending by date range."""
+        currency_id, account_id, category_id, user_id = (
+            self._create_spending_dependencies()
+        )
+
+        # Create spending entries with different timestamps
+        now = datetime.now()
+        yesterday = now - timedelta(days=1)
+        tomorrow = now + timedelta(days=1)
+
+        self.dal.create_spending(
+            account_id, 10.00, category_id, user_id, "Yesterday", yesterday
+        )
+        self.dal.create_spending(account_id, 20.00, category_id, user_id, "Today", now)
+        self.dal.create_spending(
+            account_id, 30.00, category_id, user_id, "Tomorrow", tomorrow
+        )
+
+        # Get total for today only
+        total = self.dal.get_spending_total_by_date_range(now, now + timedelta(hours=1))
+        assert total == 20.0
+
+        # Get total for yesterday and today
+        total = self.dal.get_spending_total_by_date_range(
+            yesterday, now + timedelta(hours=1)
+        )
+        assert total == 30.0
+
+        # Get total for all dates
+        total = self.dal.get_spending_total_by_date_range(
+            yesterday, tomorrow + timedelta(hours=1)
+        )
+        assert total == 60.0

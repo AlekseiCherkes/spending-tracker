@@ -4,6 +4,7 @@ Uses sqlite3 directly for simple, transparent database operations.
 """
 
 import sqlite3
+from datetime import datetime
 from typing import List, Optional
 
 
@@ -68,6 +69,42 @@ class SpendingTrackerDAL:
                     sort_order INTEGER NOT NULL DEFAULT 0
                 )
             """
+            )
+
+            # Spending table
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS spending (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL,
+                    amount DECIMAL(10, 2) NOT NULL,
+                    category_id INTEGER NOT NULL,
+                    reporter_id INTEGER NOT NULL,
+                    notes TEXT,
+                    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (account_id) REFERENCES accounts (id),
+                    FOREIGN KEY (category_id) REFERENCES categories (id),
+                    FOREIGN KEY (reporter_id) REFERENCES users (id)
+                )
+            """
+            )
+
+            # Create indexes for better query performance
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_spending_account_id "
+                "ON spending (account_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_spending_category_id "
+                "ON spending (category_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_spending_reporter_id "
+                "ON spending (reporter_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_spending_timestamp "
+                "ON spending (timestamp)"
             )
 
             conn.commit()
@@ -576,6 +613,424 @@ class SpendingTrackerDAL:
             except Exception:
                 conn.rollback()
                 return False
+
+    # =================
+    # SPENDING OPERATIONS
+    # =================
+
+    def create_spending(
+        self,
+        account_id: int,
+        amount: float,
+        category_id: int,
+        reporter_id: int,
+        notes: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
+    ) -> int:
+        """
+        Create a new spending entry.
+
+        Args:
+            account_id: ID of the account the spending is from
+            amount: Amount spent (positive number)
+            category_id: ID of the spending category
+            reporter_id: ID of the user who reported this spending
+            notes: Optional notes about the spending
+            timestamp: Optional timestamp (defaults to current time)
+
+        Returns:
+            The ID of the created spending entry
+
+        Raises:
+            sqlite3.IntegrityError: If foreign key constraints are violated
+        """
+        if timestamp is None:
+            timestamp = datetime.now()
+
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO spending
+                (account_id, amount, category_id, reporter_id, notes, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """,
+                (account_id, amount, category_id, reporter_id, notes, timestamp),
+            )
+            conn.commit()
+            lastrowid = cursor.lastrowid
+            if lastrowid is None:
+                raise RuntimeError("Failed to get ID of created spending entry")
+            return lastrowid
+
+    def get_spending_by_id(self, spending_id: int) -> Optional[dict]:
+        """
+        Get a spending entry by its ID.
+
+        Args:
+            spending_id: Spending ID
+
+        Returns:
+            Spending data as dict or None if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT id, account_id, amount, category_id, reporter_id, notes,
+                       timestamp
+                FROM spending WHERE id = ?
+            """,
+                (spending_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_spending_by_id_with_details(self, spending_id: int) -> Optional[dict]:
+        """
+        Get a spending entry by its ID with account, category, and reporter details.
+
+        Args:
+            spending_id: Spending ID
+
+        Returns:
+            Spending data with related details as dict or None if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT
+                    s.id, s.account_id, s.amount, s.category_id, s.reporter_id,
+                    s.notes, s.timestamp,
+                    a.name as account_name, a.iban as account_iban,
+                    c.name as category_name, c.sort_order as category_sort_order,
+                    u.name as reporter_name, u.telegram_id as reporter_telegram_id,
+                    cur.currency_code
+                FROM spending s
+                JOIN accounts a ON s.account_id = a.id
+                JOIN categories c ON s.category_id = c.id
+                JOIN users u ON s.reporter_id = u.id
+                JOIN currencies cur ON a.currency_id = cur.id
+                WHERE s.id = ?
+            """,
+                (spending_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_all_spending(self, limit: Optional[int] = None) -> List[dict]:
+        """
+        Get all spending entries.
+
+        Args:
+            limit: Optional limit on number of results
+
+        Returns:
+            List of spending data as dicts, sorted by timestamp descending
+        """
+        with self._get_connection() as conn:
+            query = """
+                SELECT id, account_id, amount, category_id, reporter_id,
+                       notes, timestamp
+                FROM spending ORDER BY timestamp DESC
+            """
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor = conn.execute(query)
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def get_all_spending_with_details(self, limit: Optional[int] = None) -> List[dict]:
+        """
+        Get all spending entries with account, category, and reporter details.
+
+        Args:
+            limit: Optional limit on number of results
+
+        Returns:
+            List of spending data with related details as dicts,
+            sorted by timestamp descending
+        """
+        with self._get_connection() as conn:
+            query = """
+                SELECT
+                    s.id, s.account_id, s.amount, s.category_id, s.reporter_id,
+                    s.notes, s.timestamp,
+                    a.name as account_name, a.iban as account_iban,
+                    c.name as category_name, c.sort_order as category_sort_order,
+                    u.name as reporter_name, u.telegram_id as reporter_telegram_id,
+                    cur.currency_code
+                FROM spending s
+                JOIN accounts a ON s.account_id = a.id
+                JOIN categories c ON s.category_id = c.id
+                JOIN users u ON s.reporter_id = u.id
+                JOIN currencies cur ON a.currency_id = cur.id
+                ORDER BY s.timestamp DESC
+            """
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor = conn.execute(query)
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def get_spending_by_account(
+        self, account_id: int, limit: Optional[int] = None
+    ) -> List[dict]:
+        """
+        Get spending entries for a specific account.
+
+        Args:
+            account_id: Account ID
+            limit: Optional limit on number of results
+
+        Returns:
+            List of spending data as dicts, sorted by timestamp descending
+        """
+        with self._get_connection() as conn:
+            query = """
+                SELECT id, account_id, amount, category_id, reporter_id,
+                       notes, timestamp
+                FROM spending WHERE account_id = ? ORDER BY timestamp DESC
+            """
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor = conn.execute(query, (account_id,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def get_spending_by_category(
+        self, category_id: int, limit: Optional[int] = None
+    ) -> List[dict]:
+        """
+        Get spending entries for a specific category.
+
+        Args:
+            category_id: Category ID
+            limit: Optional limit on number of results
+
+        Returns:
+            List of spending data as dicts, sorted by timestamp descending
+        """
+        with self._get_connection() as conn:
+            query = """
+                SELECT id, account_id, amount, category_id, reporter_id,
+                       notes, timestamp
+                FROM spending WHERE category_id = ? ORDER BY timestamp DESC
+            """
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor = conn.execute(query, (category_id,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def get_spending_by_reporter(
+        self, reporter_id: int, limit: Optional[int] = None
+    ) -> List[dict]:
+        """
+        Get spending entries for a specific reporter.
+
+        Args:
+            reporter_id: Reporter (user) ID
+            limit: Optional limit on number of results
+
+        Returns:
+            List of spending data as dicts, sorted by timestamp descending
+        """
+        with self._get_connection() as conn:
+            query = """
+                SELECT id, account_id, amount, category_id, reporter_id,
+                       notes, timestamp
+                FROM spending WHERE reporter_id = ? ORDER BY timestamp DESC
+            """
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor = conn.execute(query, (reporter_id,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def get_spending_by_date_range(
+        self, start_date: datetime, end_date: datetime, limit: Optional[int] = None
+    ) -> List[dict]:
+        """
+        Get spending entries within a date range.
+
+        Args:
+            start_date: Start of date range (inclusive)
+            end_date: End of date range (inclusive)
+            limit: Optional limit on number of results
+
+        Returns:
+            List of spending data as dicts, sorted by timestamp descending
+        """
+        with self._get_connection() as conn:
+            query = """
+                SELECT id, account_id, amount, category_id, reporter_id,
+                       notes, timestamp
+                FROM spending WHERE timestamp >= ? AND timestamp <= ?
+                ORDER BY timestamp DESC
+            """
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor = conn.execute(query, (start_date, end_date))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def update_spending(
+        self,
+        spending_id: int,
+        account_id: int,
+        amount: float,
+        category_id: int,
+        reporter_id: int,
+        notes: Optional[str] = None,
+    ) -> bool:
+        """
+        Update a spending entry.
+
+        Args:
+            spending_id: Spending ID
+            account_id: New account ID
+            amount: New amount
+            category_id: New category ID
+            reporter_id: New reporter ID
+            notes: New notes
+
+        Returns:
+            True if spending was updated, False if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE spending
+                SET account_id = ?, amount = ?, category_id = ?,
+                    reporter_id = ?, notes = ?
+                WHERE id = ?
+            """,
+                (account_id, amount, category_id, reporter_id, notes, spending_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_spending(self, spending_id: int) -> bool:
+        """
+        Delete a spending entry.
+
+        Args:
+            spending_id: Spending ID
+
+        Returns:
+            True if spending was deleted, False if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute("DELETE FROM spending WHERE id = ?", (spending_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def spending_exists(self, spending_id: int) -> bool:
+        """
+        Check if a spending entry exists.
+
+        Args:
+            spending_id: Spending ID
+
+        Returns:
+            True if spending exists, False otherwise
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT 1 FROM spending WHERE id = ?", (spending_id,))
+            return cursor.fetchone() is not None
+
+    def get_spending_count(self) -> int:
+        """
+        Get the total number of spending entries.
+
+        Returns:
+            Number of spending entries
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT COUNT(*) FROM spending")
+            result = cursor.fetchone()
+            return int(result[0]) if result else 0
+
+    def get_spending_total_by_account(self, account_id: int) -> float:
+        """
+        Get the total amount spent from a specific account.
+
+        Args:
+            account_id: Account ID
+
+        Returns:
+            Total amount spent from the account
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM spending WHERE account_id = ?",
+                (account_id,),
+            )
+            result = cursor.fetchone()
+            return float(result[0]) if result else 0.0
+
+    def get_spending_total_by_category(self, category_id: int) -> float:
+        """
+        Get the total amount spent in a specific category.
+
+        Args:
+            category_id: Category ID
+
+        Returns:
+            Total amount spent in the category
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM spending WHERE category_id = ?",
+                (category_id,),
+            )
+            result = cursor.fetchone()
+            return float(result[0]) if result else 0.0
+
+    def get_spending_total_by_reporter(self, reporter_id: int) -> float:
+        """
+        Get the total amount spent by a specific reporter.
+
+        Args:
+            reporter_id: Reporter (user) ID
+
+        Returns:
+            Total amount spent by the reporter
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM spending WHERE reporter_id = ?",
+                (reporter_id,),
+            )
+            result = cursor.fetchone()
+            return float(result[0]) if result else 0.0
+
+    def get_spending_total_by_date_range(
+        self, start_date: datetime, end_date: datetime
+    ) -> float:
+        """
+        Get the total amount spent within a date range.
+
+        Args:
+            start_date: Start of date range (inclusive)
+            end_date: End of date range (inclusive)
+
+        Returns:
+            Total amount spent in the date range
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM spending "
+                "WHERE timestamp >= ? AND timestamp <= ?",
+                (start_date, end_date),
+            )
+            result = cursor.fetchone()
+            return float(result[0]) if result else 0.0
 
     # =================
     # USER OPERATIONS
