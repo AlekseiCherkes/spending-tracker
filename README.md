@@ -123,6 +123,33 @@ This project uses **pip-tools** for dependency locking to ensure reproducible bu
 - ✅ **Debugging** - Consistent environment for troubleshooting
 - ✅ **CI/CD** - Reliable automated builds
 
+## 🧪 Test Data
+
+### Populating Test Data
+To populate the database with test data (currencies, users, categories, and accounts), run:
+
+```bash
+# Make sure your virtual environment is activated
+source venv/bin/activate
+
+# Run the test data script
+python scripts/populate_test_data.py
+```
+
+The script includes:
+- **Currencies**: EUR, USD, BYN
+- **Users**: Alex and Hanna with Telegram IDs
+- **Categories**: 20 spending categories in Russian (prioritized order)
+- **Accounts**: Sample bank accounts with IBAN numbers
+
+The script is safe to run multiple times - it won't create duplicates.
+
+### Test Data Details
+- **Alex** (Telegram ID: 5033919666): Revolut (Joint), Nordea (Spending)
+- **Hanna** (Random Telegram ID): S-pankki
+- **Categories**: From "Продукты и хозтовары" to "Другое" with proper sort order
+- **All accounts**: EUR currency by default
+
 ## Current Status
 ✅ Basic Python module structure
 ✅ Python 3.13+ requirement
