@@ -90,22 +90,10 @@ class SpendingTrackerDAL:
             )
 
             # Create indexes for better query performance
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_spending_account_id "
-                "ON spending (account_id)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_spending_category_id "
-                "ON spending (category_id)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_spending_reporter_id "
-                "ON spending (reporter_id)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_spending_timestamp "
-                "ON spending (timestamp)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_spending_account_id " "ON spending (account_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_spending_category_id " "ON spending (category_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_spending_reporter_id " "ON spending (reporter_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_spending_timestamp " "ON spending (timestamp)")
 
             conn.commit()
 
@@ -148,9 +136,7 @@ class SpendingTrackerDAL:
             Currency data as dict or None if not found
         """
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT id, currency_code FROM currencies WHERE id = ?", (currency_id,)
-            )
+            cursor = conn.execute("SELECT id, currency_code FROM currencies WHERE id = ?", (currency_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -180,9 +166,7 @@ class SpendingTrackerDAL:
             List of currency data as dicts, sorted by currency_code
         """
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT id, currency_code FROM currencies ORDER BY currency_code"
-            )
+            cursor = conn.execute("SELECT id, currency_code FROM currencies ORDER BY currency_code")
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -253,9 +237,7 @@ class SpendingTrackerDAL:
     # ACCOUNT OPERATIONS
     # =================
 
-    def create_account(
-        self, currency_id: int, name: str, iban: Optional[str] = None
-    ) -> int:
+    def create_account(self, currency_id: int, name: str, iban: Optional[str] = None) -> int:
         """
         Create a new account.
 
@@ -332,9 +314,7 @@ class SpendingTrackerDAL:
             List of account data as dicts, sorted by name
         """
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT id, currency_id, name, iban FROM accounts ORDER BY name"
-            )
+            cursor = conn.execute("SELECT id, currency_id, name, iban FROM accounts ORDER BY name")
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -371,16 +351,13 @@ class SpendingTrackerDAL:
         """
         with self._get_connection() as conn:
             cursor = conn.execute(
-                "SELECT id, currency_id, name, iban FROM accounts "
-                "WHERE currency_id = ? ORDER BY name",
+                "SELECT id, currency_id, name, iban FROM accounts " "WHERE currency_id = ? ORDER BY name",
                 (currency_id,),
             )
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
-    def update_account(
-        self, account_id: int, currency_id: int, name: str, iban: Optional[str] = None
-    ) -> bool:
+    def update_account(self, account_id: int, currency_id: int, name: str, iban: Optional[str] = None) -> bool:
         """
         Update an account.
 
@@ -515,9 +492,7 @@ class SpendingTrackerDAL:
             List of category data as dicts, sorted by sort_order then name
         """
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT id, name, sort_order FROM categories ORDER BY sort_order, name"
-            )
+            cursor = conn.execute("SELECT id, name, sort_order FROM categories ORDER BY sort_order, name")
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -596,9 +571,7 @@ class SpendingTrackerDAL:
             try:
                 # First, validate all category IDs exist
                 for category_id, _ in category_orders:
-                    cursor = conn.execute(
-                        "SELECT 1 FROM categories WHERE id = ?", (category_id,)
-                    )
+                    cursor = conn.execute("SELECT 1 FROM categories WHERE id = ?", (category_id,))
                     if cursor.fetchone() is None:
                         return False
 
@@ -773,9 +746,7 @@ class SpendingTrackerDAL:
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
-    def get_spending_by_account(
-        self, account_id: int, limit: Optional[int] = None
-    ) -> List[dict]:
+    def get_spending_by_account(self, account_id: int, limit: Optional[int] = None) -> List[dict]:
         """
         Get spending entries for a specific account.
 
@@ -799,9 +770,7 @@ class SpendingTrackerDAL:
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
-    def get_spending_by_category(
-        self, category_id: int, limit: Optional[int] = None
-    ) -> List[dict]:
+    def get_spending_by_category(self, category_id: int, limit: Optional[int] = None) -> List[dict]:
         """
         Get spending entries for a specific category.
 
@@ -825,9 +794,7 @@ class SpendingTrackerDAL:
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
-    def get_spending_by_reporter(
-        self, reporter_id: int, limit: Optional[int] = None
-    ) -> List[dict]:
+    def get_spending_by_reporter(self, reporter_id: int, limit: Optional[int] = None) -> List[dict]:
         """
         Get spending entries for a specific reporter.
 
@@ -1010,9 +977,7 @@ class SpendingTrackerDAL:
             result = cursor.fetchone()
             return float(result[0]) if result else 0.0
 
-    def get_spending_total_by_date_range(
-        self, start_date: datetime, end_date: datetime
-    ) -> float:
+    def get_spending_total_by_date_range(self, start_date: datetime, end_date: datetime) -> float:
         """
         Get the total amount spent within a date range.
 
@@ -1025,8 +990,7 @@ class SpendingTrackerDAL:
         """
         with self._get_connection() as conn:
             cursor = conn.execute(
-                "SELECT COALESCE(SUM(amount), 0) FROM spending "
-                "WHERE timestamp >= ? AND timestamp <= ?",
+                "SELECT COALESCE(SUM(amount), 0) FROM spending " "WHERE timestamp >= ? AND timestamp <= ?",
                 (start_date, end_date),
             )
             result = cursor.fetchone()
@@ -1072,9 +1036,7 @@ class SpendingTrackerDAL:
             User data as dict or None if not found
         """
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT id, name, telegram_id FROM users WHERE id = ?", (user_id,)
-            )
+            cursor = conn.execute("SELECT id, name, telegram_id FROM users WHERE id = ?", (user_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -1120,9 +1082,7 @@ class SpendingTrackerDAL:
             True if user was updated, False if not found
         """
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "UPDATE users SET name = ? WHERE id = ?", (name, user_id)
-            )
+            cursor = conn.execute("UPDATE users SET name = ? WHERE id = ?", (name, user_id))
             conn.commit()
             return cursor.rowcount > 0
 
@@ -1152,9 +1112,7 @@ class SpendingTrackerDAL:
             True if user exists, False otherwise
         """
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT 1 FROM users WHERE telegram_id = ?", (telegram_id,)
-            )
+            cursor = conn.execute("SELECT 1 FROM users WHERE telegram_id = ?", (telegram_id,))
             return cursor.fetchone() is not None
 
     def get_user_count(self) -> int:

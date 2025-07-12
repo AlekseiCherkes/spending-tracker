@@ -14,12 +14,16 @@
 - **Tables**: users, currencies, accounts, categories, spending
 - **Bot Structure**: Basic Telegram bot with info commands
 - **Infrastructure**: Testing, linting, type checking, dependency management
+- **Expense Tracking**: Full expense addition workflow with inline keyboards
+- **User Management**: Auto-registration on first interaction
+- **State Management**: In-memory draft expense management
 
 #### Next Priority Tasks 🎯
-1. **Add expense tracking**: `/add` command for recording spending
-2. **Auto user registration**: Create users on first bot interaction
-3. **View commands**: `/spending`, `/stats`, `/month`
-4. **Category management**: `/categories` command
+1. **Add viewing commands**: `/spending`, `/stats`, `/month`
+2. **Account management**: `/accounts` command to manage user accounts
+3. **Category management**: `/categories` command
+4. **Enhanced expense features**: Edit existing expenses, add notes
+5. **Reporting**: Monthly/weekly summaries and analytics
 
 #### Development Preferences
 - **Testing**: TDD approach - tests first, then implementation
@@ -38,6 +42,18 @@
 - **Decision**: Mandatory pre-commit checks for every task
 - **Rationale**: Maintain code quality, catch issues early
 - **Implementation**: `./scripts/dev.sh check` must pass
+
+#### 2024-01-XX: Expense State Management
+- **Decision**: Use in-memory state for draft expenses
+- **Rationale**: Simple, fast, and sufficient for single-server deployment
+- **Implementation**: `ExpenseStateManager` class with global instance
+- **Status**: ✅ Implemented with type safety
+
+#### 2024-01-XX: Text Message Expense Detection
+- **Decision**: Parse numbers from any text message as potential expenses
+- **Rationale**: Natural and intuitive user experience
+- **Implementation**: Regex-based parsing with inline keyboards
+- **Status**: ✅ Implemented with validation
 
 ## Development Commands
 

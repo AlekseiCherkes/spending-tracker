@@ -77,6 +77,27 @@ Current bot commands:
 - `/about` - Information about the bot
 - `/users` - List all registered users
 
+### 💰 Expense Tracking
+- Send any message containing a number to start adding an expense
+- Use the inline keyboard to select category and account
+- Click "Save" to store the expense in the database
+
+#### How to Add Expenses
+1. Send a message with an amount (e.g., "15.50", "купил кофе 3.20", "обед 12")
+2. The bot will automatically detect the number and create a draft expense
+3. Use the inline keyboard to:
+   - Change the category (defaults to first category by priority)
+   - Change the account (defaults to first available account)
+   - Save the expense or cancel
+4. The expense will be saved with timestamp and user information
+
+#### Features
+- 🔄 **Auto-detection**: Numbers in messages are automatically recognized as expenses
+- 👤 **Auto-registration**: New users are automatically registered on first interaction
+- 🎯 **Smart defaults**: Uses first category and account by priority
+- 📊 **Interactive interface**: Inline keyboards for easy expense management
+- ✅ **Validation**: Ensures all required fields are filled before saving
+
 ## 🔒 Dependency Management
 
 This project uses **pip-tools** for dependency locking to ensure reproducible builds:
@@ -157,9 +178,14 @@ The script is safe to run multiple times - it won't create duplicates.
 ✅ Virtual environment setup
 ✅ Dependency locking with pip-tools
 ✅ Basic Telegram bot functionality
-🔄 Coming soon: Database integration
-🔄 Coming soon: Expense tracking features
-🔄 Coming soon: Spending categories
+✅ Database integration with SQLite
+✅ Test data population script
+✅ Expense tracking with inline keyboards
+✅ Auto-registration of users
+✅ In-memory state management
+🔄 Coming soon: Expense viewing and reporting
+🔄 Coming soon: Account management
+🔄 Coming soon: Category management
 🔄 Coming soon: Monthly reports
 
 ## Project Structure

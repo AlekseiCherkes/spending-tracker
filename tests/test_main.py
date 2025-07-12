@@ -20,10 +20,7 @@ class TestSpendingTrackerModule:
         """Test module metadata is properly set."""
         assert spending_tracker.__version__ == "0.1.0"
         assert spending_tracker.__author__ == "Your Name"
-        assert (
-            spending_tracker.__description__
-            == "A Telegram bot for personal spending tracking"
-        )
+        assert spending_tracker.__description__ == "A Telegram bot for personal spending tracking"
 
     def test_main_function_exists(self):
         """Test that the main function exists and is callable."""
