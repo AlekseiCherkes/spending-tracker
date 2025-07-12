@@ -67,6 +67,10 @@ pyproject-hooks==1.2.0
     #   build
     #   pip-tools
 pytest==8.4.1
+    # via
+    #   pytest-asyncio
+    #   spending-tracker (pyproject.toml)
+pytest-asyncio==1.0.0
     # via spending-tracker (pyproject.toml)
 python-dotenv==1.1.1
     # via spending-tracker (pyproject.toml)

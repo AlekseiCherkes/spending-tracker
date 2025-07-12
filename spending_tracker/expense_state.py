@@ -35,6 +35,7 @@ class DraftExpense:
             "amount": self.amount,
             "category_id": self.category_id,
             "account_id": self.account_id,
+            "reporter_id": self.telegram_id,
             "notes": self.notes,
             "timestamp": self.timestamp or datetime.now(),
         }
