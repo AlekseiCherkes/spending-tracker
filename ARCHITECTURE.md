@@ -103,6 +103,7 @@ spending-tracker/
 
 ### Development Dependencies
 - **pytest**: Testing framework
+- **pytest-asyncio**: Async testing support
 - **black**: Code formatting
 - **flake8**: Linting
 - **mypy**: Type checking
@@ -152,6 +153,13 @@ spending-tracker/
 - Transaction handling with context managers
 - Dict-based data representation
 - Comprehensive error handling
+
+### 5. **Comprehensive Testing Strategy**
+- **158 total tests**: 99 DAL tests + 59 new bot/state tests
+- **Async testing**: pytest-asyncio for bot handlers
+- **Telegram mocking**: MagicMock for Telegram objects (avoiding attribute restrictions)
+- **State isolation**: Separate test instances for state management
+- **Coverage areas**: Command handlers, text parsing, callbacks, user management, draft expenses
 
 ## Future Considerations
 
@@ -256,6 +264,7 @@ Automatically runs quality checks on every git commit:
 | 2024-01 | Single DAL class architecture | Simplified connection management and complex queries |
 | 2024-01 | Standard Python tooling setup | Replace custom scripts with black, isort, flake8, mypy |
 | 2024-01 | Pre-commit hooks integration | Automatic quality checks and consistent codebase |
+| 2024-01 | Comprehensive test suite | 158 total tests with async support and Telegram mocking |
 
 ---
 

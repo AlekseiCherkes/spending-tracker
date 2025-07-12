@@ -17,6 +17,11 @@
 - **Expense Tracking**: Full expense addition workflow with inline keyboards
 - **User Management**: Auto-registration on first interaction
 - **State Management**: In-memory draft expense management
+- **Comprehensive Test Suite**: 158 total tests covering all bot functionality
+  - Bot tests (37 tests): command handlers, text parsing, callbacks, user management
+  - State management tests (22 tests): draft expenses, state isolation, validation
+  - Async testing setup with pytest-asyncio
+  - Telegram object mocking with MagicMock
 
 #### Next Priority Tasks 🎯
 1. **Add viewing commands**: `/spending`, `/stats`, `/month`
@@ -54,6 +59,16 @@
 - **Rationale**: Natural and intuitive user experience
 - **Implementation**: Regex-based parsing with inline keyboards
 - **Status**: ✅ Implemented with validation
+
+#### 2024-01-XX: Comprehensive Test Suite Implementation
+- **Decision**: Implement full test coverage for bot functionality and state management
+- **Rationale**: Ensure reliability, catch regressions, enable confident refactoring
+- **Implementation**:
+  - 37 bot tests covering all handlers and user interactions
+  - 22 state management tests for draft expense lifecycle
+  - Async testing with pytest-asyncio
+  - Telegram object mocking strategy with MagicMock
+- **Status**: ✅ Implemented with 158 total tests (99 DAL + 59 new)
 
 ## Development Commands
 
