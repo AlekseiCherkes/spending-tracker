@@ -70,6 +70,12 @@
   - Telegram object mocking strategy with MagicMock
 - **Status**: ✅ Implemented with 158 total tests (99 DAL + 59 new)
 
+#### 2024-01-XX: Python Version Update
+- **Decision**: Changed from Python 3.13+ to Python 3.12+ requirement
+- **Rationale**: Primary reason - Python 3.12 is available out-of-the-box in Ubuntu 24.04 LTS as default system Python. Code analysis showed no Python 3.13-specific features used; Python 3.12 provides stable modern features with broader compatibility
+- **Status**: ✅ Updated configuration files and regenerated dependencies
+- **Implementation**: Updated pyproject.toml, ARCHITECTURE.md, README.md, and bot.py version displays
+
 ## Development Commands
 
 ```bash

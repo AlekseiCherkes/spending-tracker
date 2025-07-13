@@ -5,7 +5,7 @@ A Telegram bot for personal spending tracking.
 ## Getting Started
 
 ### Prerequisites
-- Python 3.13+
+- Python 3.12+ (available out-of-the-box in Ubuntu 24.04 LTS)
 - Telegram Bot Token (get from [@BotFather](https://t.me/BotFather))
 
 ### Installation
@@ -173,7 +173,7 @@ The script is safe to run multiple times - it won't create duplicates.
 
 ## Current Status
 ✅ Basic Python module structure
-✅ Python 3.13+ requirement
+✅ Python 3.12+ requirement
 ✅ Modern project configuration (pyproject.toml)
 ✅ Virtual environment setup
 ✅ Dependency locking with pip-tools
@@ -236,7 +236,7 @@ mypy spending_tracker/
 ### Development Plan
 We're building this step by step:
 1. ✅ Basic Python module structure
-2. ✅ Python 3.13+ requirement with modern configuration
+2. ✅ Python 3.12+ requirement with modern configuration
 3. ✅ Virtual environment setup
 4. ✅ Dependency locking with pip-tools
 5. ✅ Basic Telegram bot interface

@@ -192,7 +192,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "✅ Bot is running!\n"
         "🔋 Status: Online\n"
         "📱 Version: 0.1.0\n"
-        "🐍 Python: 3.13\n"
+        "🐍 Python: 3.12\n"
         f"👥 Registered Users: {user_count}\n\n"
         "Ready to track your expenses! 💰"
     )
@@ -207,7 +207,7 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 📱 **Spending Tracker Bot**
 
 🎯 **Purpose:** Help you track personal expenses
-🏗️ **Built with:** Python 3.13 + python-telegram-bot
+🏗️ **Built with:** Python 3.12 + python-telegram-bot
 📦 **Version:** 0.1.0
 ⚡ **Status:** In Development
 

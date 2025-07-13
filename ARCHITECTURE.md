@@ -14,13 +14,14 @@ This document captures key architectural decisions made during the development o
   - Cross-platform accessibility (mobile, desktop, web)
 - **Alternative Considered**: CLI interface (removed for simplicity)
 
-### 2. **Python 3.13+ Minimum Version**
-- **Decision**: Require Python 3.13+
+### 2. **Python 3.12+ Minimum Version**
+- **Decision**: Require Python 3.12+
 - **Rationale**:
-  - Latest performance improvements
-  - Modern language features
-  - Better async/await support for Telegram bot
-  - Type hints and error handling improvements
+  - Available out-of-the-box in Ubuntu 24.04 LTS (default system Python)
+  - Stable modern Python version with performance improvements
+  - Excellent async/await support for Telegram bot
+  - Robust type hints and error handling
+  - Wide compatibility with dependencies
 
 ### 3. **Package-Based Structure**
 - **Decision**: Use `spending_tracker/` package with `__main__.py` entry point
@@ -255,7 +256,7 @@ Automatically runs quality checks on every git commit:
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2024-01 | Telegram Bot as primary interface | User experience and development simplicity |
-| 2024-01 | Python 3.13+ minimum | Latest features and performance |
+| 2024-01 | Python 3.12+ minimum | Available in Ubuntu 24.04 LTS, stable modern version |
 | 2024-01 | Remove CLI functionality | Focus on single interface |
 | 2024-01 | pip-tools for dependency locking | Reproducible builds |
 | 2024-01 | Simplified main entry point | Reduced complexity |
