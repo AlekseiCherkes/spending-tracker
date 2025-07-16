@@ -91,7 +91,12 @@ install_dependencies() {
         ufw \
         curl \
         htop \
-        logrotate
+        logrotate \
+        cron
+
+    # Ensure cron service is enabled and started
+    systemctl enable cron
+    systemctl start cron
 
     log_success "System dependencies installed"
 }

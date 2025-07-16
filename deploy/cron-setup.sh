@@ -42,6 +42,25 @@ check_root() {
     fi
 }
 
+check_cron_available() {
+    log_info "Checking if cron is available..."
+
+    if ! command -v crontab >/dev/null 2>&1; then
+        log_error "Cron is not installed!"
+        log_error "Please run the deployment script first: sudo ./deploy/deploy.sh"
+        exit 1
+    fi
+
+    # Verify cron service is running
+    if ! systemctl is-active --quiet cron; then
+        log_error "Cron service is not running!"
+        log_error "Please start cron service: sudo systemctl start cron"
+        exit 1
+    fi
+
+    log_success "Cron is available and running"
+}
+
 setup_app_user_cron() {
     log_info "Setting up cron jobs for $APP_USER..."
 
@@ -169,6 +188,7 @@ main() {
     echo "================================================================"
 
     check_root
+    check_cron_available
     create_log_directory
     setup_app_user_cron
     setup_root_cron

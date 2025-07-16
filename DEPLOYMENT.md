@@ -83,7 +83,7 @@ sudo TELEGRAM_BOT_TOKEN="your_token" REPO_URL="your_repo" ./deploy/deploy.sh
 ```
 
 **What it does**:
-1. Installs system dependencies (Python 3.12, git, sqlite3, etc.)
+1. Installs system dependencies (Python 3.12, git, sqlite3, cron, etc.)
 2. Creates dedicated `spending-tracker` user
 3. Clones repository and sets up Python virtual environment
 4. Creates `.env` configuration file
@@ -168,7 +168,7 @@ sudo /opt/spending-tracker/deploy/monitor.sh full
 
 **Location**: `deploy/cron-setup.sh`
 
-**Purpose**: Sets up automated tasks
+**Purpose**: Sets up automated tasks (requires cron to be installed via deploy.sh)
 
 **Usage**:
 ```bash
@@ -391,6 +391,17 @@ sudo -u spending-tracker /opt/spending-tracker/venv/bin/python -m spending_track
 
 # Check bot token
 curl -s https://api.telegram.org/botYOUR_TOKEN/getMe
+```
+
+**Cron setup fails with "Cron is not installed!"**:
+```bash
+# Run the full deployment script first
+sudo ./deploy/deploy.sh
+
+# Or install cron manually if needed
+sudo apt update && sudo apt install -y cron
+sudo systemctl enable cron
+sudo systemctl start cron
 ```
 
 **High memory usage**:
