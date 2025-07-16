@@ -76,6 +76,19 @@
 - **Status**: ✅ Updated configuration files and regenerated dependencies
 - **Implementation**: Updated pyproject.toml, ARCHITECTURE.md, README.md, and bot.py version displays
 
+#### 2024-01-XX: Docker-Based Deployment Migration
+- **Decision**: Migrated from complex systemd-based deployment (1300+ lines) to Docker-based approach (~125 lines)
+- **Rationale**: Original deployment was untestable, overly complex, and required production server access for any testing. Docker approach enables local testing, immutable deployments, and massive simplification
+- **Key Principles**: Testability first, minimal complexity, production isolation, zero-dependency production
+- **Implementation**:
+  - Dockerfile for application containerization
+  - docker-compose.local.yml for local development
+  - docker-compose.prod.yml for production deployment
+  - scripts/local-test.sh for local testing workflow
+  - scripts/build-and-deploy.sh for production deployment
+- **Benefits**: 90%+ code reduction, local testability, no source code on production, single dependency (Docker)
+- **Status**: ✅ Implemented and documented in DEPLOYMENT.md and DEPLOYMENT_PRINCIPLES.md
+
 ## Development Commands
 
 ```bash
@@ -88,8 +101,40 @@ pytest tests/ -v
 # Update dependencies
 ./scripts/update-deps.sh
 
-# Start bot (requires .env with TELEGRAM_BOT_TOKEN)
+# Start bot locally (traditional way, requires .env with TELEGRAM_BOT_TOKEN)
 python -m spending_tracker
+
+# Docker-based development workflow (recommended)
+./scripts/local-test.sh              # Test with Docker locally
+./scripts/build-and-deploy.sh        # Deploy to production
+./scripts/build-and-deploy.sh --skip-test  # Deploy without local testing
+```
+
+## Docker Deployment Workflow
+
+### Local Development
+1. **Test changes**: `./scripts/local-test.sh`
+2. **Review logs**: Check that everything works as expected
+3. **Stop local env**: `docker compose -f docker-compose.local.yml down`
+
+### Production Deployment
+1. **Deploy**: `./scripts/build-and-deploy.sh`
+2. **Monitor**: Script will show deployment status and offer to show logs
+3. **Verify**: Check production logs and health
+
+### Quick Commands
+```bash
+# Local testing
+./scripts/local-test.sh
+
+# Production deployment
+./scripts/build-and-deploy.sh
+
+# Check production status
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker compose ps'
+
+# View production logs
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker compose logs -f spending-tracker'
 ```
 
 ## Next Steps Planning

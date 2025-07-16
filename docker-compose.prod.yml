@@ -1,0 +1,48 @@
+services:
+  spending-tracker:
+    image: spending-tracker:latest
+    container_name: spending-tracker
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - DB_PATH=/app/data/spending_tracker.db
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+    volumes:
+      - /opt/spending-tracker/data:/app/data
+      - /opt/spending-tracker/logs:/app/logs
+      - /opt/spending-tracker/backups:/app/backups
+    networks:
+      - spending-tracker-prod
+    healthcheck:
+      test: ["CMD", "python", "-c", "import spending_tracker; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  backup:
+    image: alpine:latest
+    container_name: spending-tracker-backup
+    restart: unless-stopped
+    volumes:
+      - /opt/spending-tracker/data:/data:ro
+      - /opt/spending-tracker/backups:/backups
+    command: |
+      sh -c '
+        while true; do
+          sleep 24h
+          timestamp=$$(date +%Y%m%d_%H%M%S)
+          cp /data/spending_tracker.db /backups/backup_$$timestamp.db
+          echo "Backup created: backup_$$timestamp.db"
+          # Keep only last 7 days of backups
+          find /backups -name "backup_*.db" -mtime +7 -delete
+          echo "Old backups cleaned up"
+        done
+      '
+    networks:
+      - spending-tracker-prod
+
+networks:
+  spending-tracker-prod:
+    driver: bridge

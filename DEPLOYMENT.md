@@ -1,436 +1,372 @@
-# Deployment Guide for GCP e2-micro
+# Docker-Based Deployment Guide
 
-This guide covers deploying the Spending Tracker Telegram Bot on a Google Cloud Platform e2-micro instance running Ubuntu 24.04.
+This guide covers the new Docker-based deployment approach for the Spending Tracker Telegram Bot. This approach emphasizes simplicity, testability, and isolation.
 
 ## Overview
 
-The deployment package includes:
-- **Automated deployment script** - Sets up the entire environment
-- **Backup system** - Automated SQLite database backups
-- **Update mechanism** - Safe updates with rollback capability
-- **Monitoring** - Resource monitoring optimized for e2-micro
-- **Systemd service** - Reliable service management
+The new deployment system is built on the following principles:
+- **Build locally, deploy remotely** - No source code on production
+- **Full testability** - Every component can be tested locally
+- **Minimal complexity** - ~70 lines vs 1300+ lines of the old approach
+- **No system dependencies** - Only Docker required on production
+- **Immutable deployments** - Same image from dev to prod
+
+## Architecture
+
+```
+Local Development          Production Server
+─────────────────          ─────────────────
+Source Code                Docker Image Only
+↓                         ↓
+Build & Test              Load & Run
+↓                         ↓
+Export Image              Deploy
+↓
+Upload via SSH ──────────→ Production Ready
+```
 
 ## System Requirements
 
-### GCP e2-micro Instance
-- **CPU**: 0.25 vCPU (burstable to 0.5 vCPU)
-- **Memory**: 1 GB RAM
-- **Storage**: 10 GB persistent disk (standard)
-- **OS**: Ubuntu 24.04 LTS
-- **Network**: Allow HTTP/HTTPS outbound (for Telegram API)
+### Production Server
+- **Any Linux distribution** with Docker support
+- **Docker** and **Docker Compose** installed
+- **SSH access** with sudo privileges
+- **Minimum resources**: 512MB RAM, 1GB disk space
 
-### Prerequisites
-- Telegram Bot Token from [@BotFather](https://t.me/BotFather)
-- Git repository with your bot code
-- SSH access to your GCP instance
+### Development Machine
+- **Docker** and **Docker Compose**
+- **SSH access** to production server
+- **Git** for source control
 
 ## Quick Start
 
-### 1. Prepare Your Instance
+### 1. Local Development Setup
 
 ```bash
-# Connect to your GCP instance
-gcloud compute ssh your-instance-name
-
-# Update system packages
-sudo apt update && sudo apt upgrade -y
-```
-
-### 2. Clone and Deploy
-
-```bash
-# Clone your repository
+# Clone repository
 git clone YOUR_REPOSITORY_URL spending-tracker
 cd spending-tracker
 
-# Run deployment (requires sudo)
-sudo ./deploy/deploy.sh
+# Test locally
+./scripts/local-test.sh
 ```
 
-The script will prompt you for:
-- Telegram Bot Token
-- Git repository URL (if not set via environment)
-
-### 3. Verify Deployment
+### 2. Production Server Setup (One-time)
 
 ```bash
-# Check service status
-sudo systemctl status spending-tracker
+# SSH to your server
+ssh your-server
 
-# View logs
-sudo journalctl -u spending-tracker -f
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
 
-# Run health check
-sudo /opt/spending-tracker/deploy/monitor.sh
+# Logout and login again for group changes
+exit
+ssh your-server
+
+# Create application directory
+sudo mkdir -p /opt/spending-tracker/{data,logs,backups}
+sudo chown $(whoami): /opt/spending-tracker
+
+# Create environment file
+echo "TELEGRAM_BOT_TOKEN=your_bot_token_here" > /opt/spending-tracker/.env
+
+exit
 ```
 
-## Deployment Scripts Reference
+### 3. Configure SSH Access
 
-### Main Deployment Script
+Add to your `~/.ssh/config`:
 
-**Location**: `deploy/deploy.sh`
-
-**Purpose**: Automates the complete deployment process
-
-**Usage**:
-```bash
-# Interactive deployment
-sudo ./deploy/deploy.sh
-
-# Non-interactive with environment variables
-sudo TELEGRAM_BOT_TOKEN="your_token" REPO_URL="your_repo" ./deploy/deploy.sh
+```
+Host spending_tracker
+    HostName your-server-ip
+    User your-username
+    IdentityFile ~/.ssh/your-key
+    ForwardAgent yes
 ```
 
-**What it does**:
-1. Installs system dependencies (Python 3.12, git, sqlite3, cron, etc.)
-2. Creates dedicated `spending-tracker` user
-3. Clones repository and sets up Python virtual environment
-4. Creates `.env` configuration file
-5. Sets up systemd service with security hardening
-6. Configures firewall (UFW)
-7. Sets up log rotation
-8. Runs pre-deployment tests
-9. Starts the service
-
-### Backup Script
-
-**Location**: `deploy/backup.sh`
-
-**Purpose**: Creates consistent SQLite database backups with rotation
-
-**Usage**:
-```bash
-# Manual backup
-sudo -u spending-tracker /opt/spending-tracker/deploy/backup.sh
-
-# Automated via cron (set up separately)
-```
-
-**Features**:
-- Uses SQLite's `.backup` command for consistency
-- Verifies backup integrity
-- Rotates old backups (7 days retention by default)
-- Returns backup file path for use by other scripts
-
-### Update Script
-
-**Location**: `deploy/update.sh`
-
-**Purpose**: Safely updates the application with backup and rollback
-
-**Usage**:
-```bash
-# Update to latest version
-sudo /opt/spending-tracker/deploy/update.sh
-```
-
-**Process**:
-1. Creates pre-update backup
-2. Stops the service gracefully
-3. Updates code from git repository
-4. Updates Python dependencies
-5. Runs quality checks
-6. Starts service and verifies health
-7. Rolls back automatically if any step fails
-
-### Monitoring Script
-
-**Location**: `deploy/monitor.sh`
-
-**Purpose**: Monitors system resources and service health
-
-**Usage**:
-```bash
-# Basic health summary
-sudo /opt/spending-tracker/deploy/monitor.sh
-
-# Specific checks
-sudo /opt/spending-tracker/deploy/monitor.sh memory
-sudo /opt/spending-tracker/deploy/monitor.sh service
-sudo /opt/spending-tracker/deploy/monitor.sh database
-
-# Full monitoring report
-sudo /opt/spending-tracker/deploy/monitor.sh full
-```
-
-**Monitoring Areas**:
-- Service status and uptime
-- Memory usage (threshold: 80%)
-- Disk usage (threshold: 85%)
-- CPU usage (threshold: 70%)
-- Database integrity
-- Network connectivity (Telegram API)
-- Recent error logs
-- Backup status
-
-### Cron Setup Script
-
-**Location**: `deploy/cron-setup.sh`
-
-**Purpose**: Sets up automated tasks (requires cron to be installed via deploy.sh)
-
-**Usage**:
-```bash
-sudo /opt/spending-tracker/deploy/cron-setup.sh
-```
-
-**Scheduled Tasks**:
-- **Daily backup**: 2:00 AM
-- **Monitoring**: Every 5 minutes
-- **Weekly report**: Sundays 3:00 AM
-- **Log rotation**: Daily 1:00 AM
-- **Log cleanup**: Sundays 4:00 AM
-
-## Configuration
-
-### Environment Variables
-
-The deployment creates `/opt/spending-tracker/.env` with these variables:
+### 4. Deploy
 
 ```bash
-# Required
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-
-# Application settings
-LOG_LEVEL=INFO
-DB_PATH=/opt/spending-tracker/data/spending_tracker.db
-ENVIRONMENT=production
-
-# Optional tuning
-BACKUP_RETENTION_DAYS=7
-MEMORY_THRESHOLD=80
-DISK_THRESHOLD=85
-CPU_THRESHOLD=70
+# From your local development machine
+./scripts/build-and-deploy.sh
 ```
 
-### Service Configuration
+## File Structure
 
-**Systemd Unit**: `/etc/systemd/system/spending-tracker.service`
+```
+spending-tracker/
+├── Dockerfile                    # Application container definition
+├── docker-compose.local.yml      # Local development environment
+├── docker-compose.prod.yml       # Production environment template
+├── scripts/
+│   ├── local-test.sh             # Local testing workflow
+│   └── build-and-deploy.sh       # Main deployment script
+└── [source code...]
+```
 
-**Key Features**:
-- Automatic restart on failure
-- Security hardening (NoNewPrivileges, PrivateTmp, etc.)
-- Proper working directory and environment
-- Journal logging
+## Development Workflow
 
-## Operational Tasks
-
-### Daily Operations
+### Local Testing
 
 ```bash
-# Check service health
-sudo systemctl status spending-tracker
+# Quick local test
+./scripts/local-test.sh
 
-# View recent logs
-sudo journalctl -u spending-tracker --since "1 hour ago"
-
-# Check resource usage
-sudo /opt/spending-tracker/deploy/monitor.sh
-
-# Manual backup
-sudo -u spending-tracker /opt/spending-tracker/deploy/backup.sh
+# Manual testing
+docker-compose -f docker-compose.local.yml up -d
+docker-compose -f docker-compose.local.yml logs -f
+docker-compose -f docker-compose.local.yml down
 ```
 
-### Updates
+### Deployment
 
 ```bash
-# Check for updates (doesn't apply them)
-sudo -u spending-tracker git -C /opt/spending-tracker fetch
+# Full deployment with tests
+./scripts/build-and-deploy.sh
 
-# Apply updates safely
-sudo /opt/spending-tracker/deploy/update.sh
+# Skip local tests (faster)
+./scripts/build-and-deploy.sh --skip-test
+
+# Deploy and show logs immediately
+./scripts/build-and-deploy.sh --logs
 ```
 
-### Troubleshooting
+## Production Management
+
+### Service Status
 
 ```bash
-# Service not starting
-sudo systemctl status spending-tracker
-sudo journalctl -u spending-tracker -n 50
-
-# High resource usage
-sudo /opt/spending-tracker/deploy/monitor.sh full
-
-# Database issues
-sudo -u spending-tracker sqlite3 /opt/spending-tracker/data/spending_tracker.db "PRAGMA integrity_check;"
-
-# Check bot connectivity
-curl -s https://api.telegram.org/botYOUR_TOKEN/getMe
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker-compose ps'
 ```
 
-## Security Considerations
+### View Logs
 
-### System Security
-- Dedicated non-privileged user for the application
-- Systemd security hardening enabled
-- UFW firewall configured (SSH only)
-- Application files owned by `spending-tracker` user
-
-### Application Security
-- Environment variables stored in protected `.env` file (600 permissions)
-- Database file in restricted directory
-- No sudo privileges for application user
-
-### Data Security
-- Automatic encrypted backups (if using encrypted storage)
-- Database integrity checks
-- Retention policy for sensitive logs
-
-## Monitoring and Alerting
-
-### Built-in Monitoring
-The monitoring script tracks:
-- **Service health**: Running/stopped status
-- **Resource usage**: Memory, CPU, disk
-- **Database status**: Size, integrity
-- **Network**: Telegram API connectivity
-- **Logs**: Recent errors and exceptions
-
-### Setting Up Alerts
-For production use, consider integrating with:
-- **Email notifications**: Modify `deploy/monitor.sh` to send emails
-- **Telegram alerts**: Send messages to admin chat
-- **External monitoring**: Uptime Robot, DataDog, etc.
-
-### Log Analysis
 ```bash
-# Application logs
-sudo journalctl -u spending-tracker
-
-# Monitor logs
-tail -f /opt/spending-tracker/logs/monitor.log
-
-# Backup logs
-tail -f /opt/spending-tracker/logs/backup.log
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker-compose logs -f spending-tracker'
 ```
 
-## Performance Optimization for e2-micro
+### Restart Service
 
-### Memory Management
-- **Current baseline**: ~50-100MB for the bot
-- **SQLite**: Minimal memory footprint
-- **Python**: Virtual environment keeps dependencies isolated
+```bash
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker-compose restart'
+```
 
-### CPU Optimization
-- **Async operations**: All I/O is non-blocking
-- **Efficient polling**: Uses Telegram's webhook mode if configured
-- **Minimal processing**: Direct SQL queries, no ORM overhead
+### Stop Service
 
-### Storage Management
-- **Database**: SQLite with automatic backup rotation
-- **Logs**: Automatic rotation and cleanup
-- **Backups**: 7-day retention by default
+```bash
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker-compose down'
+```
 
-## Scaling Considerations
+### Check Health
 
-### When to Upgrade from e2-micro
-Consider upgrading when:
-- Memory usage consistently >80%
-- Response time >2 seconds
-- More than 100 active users
-- Need for multiple bot instances
-
-### Migration Path
-1. **e2-small**: 2 vCPU, 2GB RAM - handles 200+ users
-2. **Container Engine**: For multiple bots
-3. **Cloud SQL**: For high availability database
+```bash
+ssh spending_tracker 'sudo docker-compose -f /opt/spending-tracker/docker-compose.yml ps'
+ssh spending_tracker 'sudo docker stats spending-tracker --no-stream'
+```
 
 ## Backup and Recovery
 
-### Backup Strategy
-- **Frequency**: Daily automatic backups
-- **Retention**: 7 days (configurable)
-- **Storage**: Local disk (consider Cloud Storage for critical data)
-- **Verification**: Automatic integrity checks
+### Automatic Backups
 
-### Recovery Procedures
+The system includes automatic daily backups:
+- **Schedule**: Daily at midnight
+- **Retention**: 7 days
+- **Location**: `/opt/spending-tracker/backups/`
+
+### Manual Backup
 
 ```bash
-# List available backups
-ls -la /opt/spending-tracker/backups/
-
-# Restore from backup
-sudo systemctl stop spending-tracker
-sudo -u spending-tracker cp /opt/spending-tracker/backups/spending_tracker_YYYYMMDD_HHMMSS.db /opt/spending-tracker/data/spending_tracker.db
-sudo systemctl start spending-tracker
-
-# Verify restoration
-sudo /opt/spending-tracker/deploy/monitor.sh database
+ssh spending_tracker 'sudo docker-compose -f /opt/spending-tracker/docker-compose.yml exec spending-tracker cp /app/data/spending_tracker.db /app/backups/manual_backup_$(date +%Y%m%d_%H%M%S).db'
 ```
 
-## Maintenance Schedule
+### Restore from Backup
 
-### Daily
-- Automatic backups (2:00 AM)
-- Log rotation (1:00 AM)
-- Resource monitoring (every 5 minutes)
+```bash
+# Stop the service
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker-compose down'
 
-### Weekly
-- Full system report (Sundays 3:00 AM)
-- Old log cleanup (Sundays 4:00 AM)
+# Copy backup to data directory
+ssh spending_tracker 'sudo cp /opt/spending-tracker/backups/backup_YYYYMMDD_HHMMSS.db /opt/spending-tracker/data/spending_tracker.db'
 
-### Monthly
-- Review backup retention policy
-- Check for system updates
-- Review monitoring thresholds
+# Restart the service
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker-compose up -d'
+```
 
-### Quarterly
-- Security updates review
-- Performance optimization review
-- Disaster recovery testing
+## Monitoring
 
-## Support and Troubleshooting
+### Health Checks
+
+The application includes built-in health checks:
+- **Interval**: Every 30 seconds
+- **Timeout**: 10 seconds
+- **Retries**: 3 attempts
+
+### Resource Monitoring
+
+```bash
+# Check container resource usage
+ssh spending_tracker 'sudo docker stats --no-stream'
+
+# Check disk usage
+ssh spending_tracker 'df -h /opt/spending-tracker'
+
+# Check memory usage
+ssh spending_tracker 'free -h'
+```
+
+### Log Analysis
+
+```bash
+# Application logs
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker-compose logs spending-tracker'
+
+# Backup container logs
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker-compose logs backup'
+
+# System journal
+ssh spending_tracker 'sudo journalctl -u docker'
+```
+
+## Troubleshooting
 
 ### Common Issues
 
-**Service won't start**:
+**Deployment fails with SSH error**:
 ```bash
-# Check configuration
-sudo -u spending-tracker /opt/spending-tracker/venv/bin/python -m spending_tracker --help
+# Test SSH connection
+ssh spending_tracker 'echo "SSH OK"'
 
-# Check bot token
-curl -s https://api.telegram.org/botYOUR_TOKEN/getMe
+# Check SSH config
+cat ~/.ssh/config | grep -A5 spending_tracker
 ```
 
-**Cron setup fails with "Cron is not installed!"**:
+**Container fails to start**:
 ```bash
-# Run the full deployment script first
-sudo ./deploy/deploy.sh
+# Check container logs
+ssh spending_tracker 'cd /opt/spending-tracker && sudo docker-compose logs spending-tracker'
 
-# Or install cron manually if needed
-sudo apt update && sudo apt install -y cron
-sudo systemctl enable cron
-sudo systemctl start cron
+# Check if .env file exists
+ssh spending_tracker 'ls -la /opt/spending-tracker/.env'
 ```
 
-**High memory usage**:
+**Image build fails locally**:
 ```bash
-# Check memory consumers
-ps aux --sort=-%mem | head -10
+# Check Docker daemon
+docker version
 
-# Restart service
-sudo systemctl restart spending-tracker
+# Check Dockerfile syntax
+docker build --no-cache .
 ```
 
-**Database corruption**:
-```bash
-# Check integrity
-sudo -u spending-tracker sqlite3 /opt/spending-tracker/data/spending_tracker.db "PRAGMA integrity_check;"
+### Recovery Procedures
 
-# Restore from backup
-sudo /opt/spending-tracker/deploy/update.sh  # Uses latest backup for rollback
+**Complete system recovery**:
+```bash
+# 1. Save backups
+ssh spending_tracker 'sudo cp -r /opt/spending-tracker/backups /tmp/'
+
+# 2. Clean install
+ssh spending_tracker 'sudo rm -rf /opt/spending-tracker'
+ssh spending_tracker 'sudo mkdir -p /opt/spending-tracker/{data,logs,backups}'
+ssh spending_tracker 'sudo chown $(whoami): /opt/spending-tracker'
+
+# 3. Restore configuration
+ssh spending_tracker 'echo "TELEGRAM_BOT_TOKEN=your_token" > /opt/spending-tracker/.env'
+
+# 4. Restore backups
+ssh spending_tracker 'sudo cp -r /tmp/backups /opt/spending-tracker/'
+
+# 5. Redeploy
+./scripts/build-and-deploy.sh
 ```
 
-### Getting Help
+## Performance Optimization
 
-1. Check service logs: `sudo journalctl -u spending-tracker`
-2. Run full monitoring: `sudo /opt/spending-tracker/deploy/monitor.sh full`
-3. Review application logs in `/opt/spending-tracker/logs/`
-4. Test bot manually: `sudo -u spending-tracker /opt/spending-tracker/venv/bin/python -m spending_tracker`
+### Resource Limits
+
+The Docker containers are configured with appropriate resource limits:
+- **Memory**: Unlimited (will use only what's needed)
+- **CPU**: Unlimited (burstable on cloud instances)
+- **Disk**: Automatic cleanup of old backups
+
+### Network Optimization
+
+- Uses bridge networking for isolation
+- No exposed ports (only outbound connections to Telegram API)
+- Minimal network overhead
+
+## Security Considerations
+
+### Container Security
+- **Non-root user**: Application runs as user ID 1000
+- **Read-only filesystem**: Except for data directories
+- **Minimal image**: Based on Python slim image
+- **No shell access**: Production containers don't include shell
+
+### Network Security
+- **No inbound ports**: Only outbound HTTPS to Telegram API
+- **Isolated network**: Containers run in isolated Docker network
+- **SSH-only access**: No web interfaces or APIs exposed
+
+### Data Security
+- **Environment variables**: Stored in protected .env file
+- **Database**: SQLite file with filesystem permissions
+- **Backups**: Local filesystem (consider encryption for sensitive data)
+
+## Migration from Old System
+
+### From Legacy systemd Deployment
+
+```bash
+# 1. Stop old service
+ssh spending_tracker 'sudo systemctl stop spending-tracker'
+ssh spending_tracker 'sudo systemctl disable spending-tracker'
+
+# 2. Backup existing data
+ssh spending_tracker 'sudo cp /opt/spending-tracker/data/spending_tracker.db /tmp/backup.db'
+
+# 3. Clean old installation
+ssh spending_tracker 'sudo rm -rf /opt/spending-tracker'
+
+# 4. Follow production setup above
+
+# 5. Restore data
+ssh spending_tracker 'cp /tmp/backup.db /opt/spending-tracker/data/spending_tracker.db'
+
+# 6. Deploy new system
+./scripts/build-and-deploy.sh
+```
+
+## Scaling Considerations
+
+### Single Server Scaling
+- **Vertical scaling**: Increase server resources
+- **Current limits**: ~1000 concurrent users per GB RAM
+
+### Multi-Server Scaling
+- **Horizontal scaling**: Deploy to multiple servers
+- **Database**: Consider PostgreSQL for shared database
+- **Load balancing**: Use Telegram webhook with load balancer
+
+## Cost Optimization
+
+### Cloud Provider Recommendations
+- **GCP e2-micro**: $5-7/month (always free tier eligible)
+- **AWS t3.nano**: $3-5/month
+- **DigitalOcean Basic**: $5/month
+
+### Resource Usage
+- **Memory**: ~50-100MB baseline
+- **CPU**: <5% on micro instances
+- **Disk**: <1GB including backups
+- **Network**: Minimal (only Telegram API calls)
 
 ---
 
 **Last Updated**: January 2024
-**Version**: 1.0
-**Tested On**: Ubuntu 24.04 LTS, GCP e2-micro
+**Version**: 2.0 (Docker-based)
+**Migration**: From systemd-based deployment

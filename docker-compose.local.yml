@@ -1,0 +1,19 @@
+services:
+  spending-tracker:
+    build: .
+    image: spending-tracker:latest
+    container_name: spending-tracker-local
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-test_token_for_local_testing}
+      - DB_PATH=/app/data/spending_tracker.db
+      - LOG_LEVEL=DEBUG
+      - ENVIRONMENT=development
+    volumes:
+      - ./local-data:/app/data
+      - ./local-logs:/app/logs
+    networks:
+      - spending-tracker-local
+
+networks:
+  spending-tracker-local:
+    driver: bridge

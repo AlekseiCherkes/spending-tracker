@@ -1,0 +1,57 @@
+# Git and development files
+.git
+.gitignore
+README.md
+ARCHITECTURE.md
+DEPLOYMENT.md
+DEPLOYMENT_PRINCIPLES.md
+DEVELOPMENT_NOTES.md
+LICENSE
+
+# Local development
+local-data
+local-logs
+.env
+.env.local
+
+# Python development
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Docker files
+docker-compose.local.yml
+docker-compose.prod.yml
+Dockerfile
+
+# Scripts (not needed in container)
+scripts/
+
+# Test data and logs
+tests/
+logs/
+
+# Temporary files
+*.tmp
+*.log
