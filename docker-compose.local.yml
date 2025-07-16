@@ -2,6 +2,7 @@ services:
   spending-tracker:
     build: .
     image: spending-tracker:latest
+    platform: linux/amd64
     container_name: spending-tracker-local
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-test_token_for_local_testing}

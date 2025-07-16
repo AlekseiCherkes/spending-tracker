@@ -43,6 +43,7 @@ docker compose -f docker-compose.local.yml build
 # Run basic tests
 log_info "Running basic image tests..."
 CONTAINER_ID=$(docker run -d \
+    --platform linux/amd64 \
     -e TELEGRAM_BOT_TOKEN="test_token" \
     -e DB_PATH="/app/data/test.db" \
     spending-tracker:latest)
