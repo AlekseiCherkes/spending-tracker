@@ -57,7 +57,7 @@ create_pre_update_backup() {
 
     # Run backup script as app user
     local backup_output
-    if backup_output=$(sudo -u "$APP_USER" "$APP_DIR/scripts/backup.sh" 2>&1); then
+    if backup_output=$(sudo -u "$APP_USER" "$APP_DIR/deploy/backup.sh" 2>&1); then
         local backup_file=$(echo "$backup_output" | grep "BACKUP_FILE=" | cut -d'=' -f2)
         log_success "Pre-update backup created: $backup_file"
         echo "$backup_file"

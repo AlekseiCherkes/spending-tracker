@@ -44,11 +44,8 @@ sudo apt update && sudo apt upgrade -y
 git clone YOUR_REPOSITORY_URL spending-tracker
 cd spending-tracker
 
-# Make deployment script executable
-chmod +x scripts/deploy.sh
-
 # Run deployment (requires sudo)
-sudo ./scripts/deploy.sh
+sudo ./deploy/deploy.sh
 ```
 
 The script will prompt you for:
@@ -65,24 +62,24 @@ sudo systemctl status spending-tracker
 sudo journalctl -u spending-tracker -f
 
 # Run health check
-sudo /opt/spending-tracker/scripts/monitor.sh
+sudo /opt/spending-tracker/deploy/monitor.sh
 ```
 
 ## Deployment Scripts Reference
 
 ### Main Deployment Script
 
-**Location**: `scripts/deploy.sh`
+**Location**: `deploy/deploy.sh`
 
 **Purpose**: Automates the complete deployment process
 
 **Usage**:
 ```bash
 # Interactive deployment
-sudo ./scripts/deploy.sh
+sudo ./deploy/deploy.sh
 
 # Non-interactive with environment variables
-sudo TELEGRAM_BOT_TOKEN="your_token" REPO_URL="your_repo" ./scripts/deploy.sh
+sudo TELEGRAM_BOT_TOKEN="your_token" REPO_URL="your_repo" ./deploy/deploy.sh
 ```
 
 **What it does**:
@@ -98,14 +95,14 @@ sudo TELEGRAM_BOT_TOKEN="your_token" REPO_URL="your_repo" ./scripts/deploy.sh
 
 ### Backup Script
 
-**Location**: `scripts/backup.sh`
+**Location**: `deploy/backup.sh`
 
 **Purpose**: Creates consistent SQLite database backups with rotation
 
 **Usage**:
 ```bash
 # Manual backup
-sudo -u spending-tracker /opt/spending-tracker/scripts/backup.sh
+sudo -u spending-tracker /opt/spending-tracker/deploy/backup.sh
 
 # Automated via cron (set up separately)
 ```
@@ -118,14 +115,14 @@ sudo -u spending-tracker /opt/spending-tracker/scripts/backup.sh
 
 ### Update Script
 
-**Location**: `scripts/update.sh`
+**Location**: `deploy/update.sh`
 
 **Purpose**: Safely updates the application with backup and rollback
 
 **Usage**:
 ```bash
 # Update to latest version
-sudo /opt/spending-tracker/scripts/update.sh
+sudo /opt/spending-tracker/deploy/update.sh
 ```
 
 **Process**:
@@ -139,22 +136,22 @@ sudo /opt/spending-tracker/scripts/update.sh
 
 ### Monitoring Script
 
-**Location**: `scripts/monitor.sh`
+**Location**: `deploy/monitor.sh`
 
 **Purpose**: Monitors system resources and service health
 
 **Usage**:
 ```bash
 # Basic health summary
-sudo /opt/spending-tracker/scripts/monitor.sh
+sudo /opt/spending-tracker/deploy/monitor.sh
 
 # Specific checks
-sudo /opt/spending-tracker/scripts/monitor.sh memory
-sudo /opt/spending-tracker/scripts/monitor.sh service
-sudo /opt/spending-tracker/scripts/monitor.sh database
+sudo /opt/spending-tracker/deploy/monitor.sh memory
+sudo /opt/spending-tracker/deploy/monitor.sh service
+sudo /opt/spending-tracker/deploy/monitor.sh database
 
 # Full monitoring report
-sudo /opt/spending-tracker/scripts/monitor.sh full
+sudo /opt/spending-tracker/deploy/monitor.sh full
 ```
 
 **Monitoring Areas**:
@@ -169,13 +166,13 @@ sudo /opt/spending-tracker/scripts/monitor.sh full
 
 ### Cron Setup Script
 
-**Location**: `scripts/cron-setup.sh`
+**Location**: `deploy/cron-setup.sh`
 
 **Purpose**: Sets up automated tasks
 
 **Usage**:
 ```bash
-sudo /opt/spending-tracker/scripts/cron-setup.sh
+sudo /opt/spending-tracker/deploy/cron-setup.sh
 ```
 
 **Scheduled Tasks**:
@@ -229,10 +226,10 @@ sudo systemctl status spending-tracker
 sudo journalctl -u spending-tracker --since "1 hour ago"
 
 # Check resource usage
-sudo /opt/spending-tracker/scripts/monitor.sh
+sudo /opt/spending-tracker/deploy/monitor.sh
 
 # Manual backup
-sudo -u spending-tracker /opt/spending-tracker/scripts/backup.sh
+sudo -u spending-tracker /opt/spending-tracker/deploy/backup.sh
 ```
 
 ### Updates
@@ -242,7 +239,7 @@ sudo -u spending-tracker /opt/spending-tracker/scripts/backup.sh
 sudo -u spending-tracker git -C /opt/spending-tracker fetch
 
 # Apply updates safely
-sudo /opt/spending-tracker/scripts/update.sh
+sudo /opt/spending-tracker/deploy/update.sh
 ```
 
 ### Troubleshooting
@@ -253,7 +250,7 @@ sudo systemctl status spending-tracker
 sudo journalctl -u spending-tracker -n 50
 
 # High resource usage
-sudo /opt/spending-tracker/scripts/monitor.sh full
+sudo /opt/spending-tracker/deploy/monitor.sh full
 
 # Database issues
 sudo -u spending-tracker sqlite3 /opt/spending-tracker/data/spending_tracker.db "PRAGMA integrity_check;"
@@ -292,7 +289,7 @@ The monitoring script tracks:
 
 ### Setting Up Alerts
 For production use, consider integrating with:
-- **Email notifications**: Modify `scripts/monitor.sh` to send emails
+- **Email notifications**: Modify `deploy/monitor.sh` to send emails
 - **Telegram alerts**: Send messages to admin chat
 - **External monitoring**: Uptime Robot, DataDog, etc.
 
@@ -359,7 +356,7 @@ sudo -u spending-tracker cp /opt/spending-tracker/backups/spending_tracker_YYYYM
 sudo systemctl start spending-tracker
 
 # Verify restoration
-sudo /opt/spending-tracker/scripts/monitor.sh database
+sudo /opt/spending-tracker/deploy/monitor.sh database
 ```
 
 ## Maintenance Schedule
@@ -411,13 +408,13 @@ sudo systemctl restart spending-tracker
 sudo -u spending-tracker sqlite3 /opt/spending-tracker/data/spending_tracker.db "PRAGMA integrity_check;"
 
 # Restore from backup
-sudo /opt/spending-tracker/scripts/update.sh  # Uses latest backup for rollback
+sudo /opt/spending-tracker/deploy/update.sh  # Uses latest backup for rollback
 ```
 
 ### Getting Help
 
 1. Check service logs: `sudo journalctl -u spending-tracker`
-2. Run full monitoring: `sudo /opt/spending-tracker/scripts/monitor.sh full`
+2. Run full monitoring: `sudo /opt/spending-tracker/deploy/monitor.sh full`
 3. Review application logs in `/opt/spending-tracker/logs/`
 4. Test bot manually: `sudo -u spending-tracker /opt/spending-tracker/venv/bin/python -m spending_tracker`
 

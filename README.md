@@ -37,13 +37,31 @@ A Telegram bot for personal spending tracking.
    ```
 
 ### Setting up the Bot
+
+#### For Development
 1. Create a `.env` file in the project root:
    ```bash
    TELEGRAM_BOT_TOKEN=your_bot_token_here
    ```
 2. Get your bot token from [@BotFather](https://t.me/BotFather) on Telegram
 
-### Running the Bot
+#### For Production Deployment
+For production deployment on GCP e2-micro or other servers, use the automated deployment script:
+```bash
+# Clone and deploy
+git clone YOUR_REPOSITORY_URL spending-tracker
+cd spending-tracker
+sudo ./deploy/deploy.sh
+```
+
+The deployment script will:
+- Prompt you for your Telegram Bot Token interactively (secure input)
+- Set up the entire production environment automatically
+- Configure systemd service, monitoring, and backups
+
+See `DEPLOYMENT.md` for complete deployment documentation.
+
+### Running the Bot (Development)
 ```bash
 # Make sure your virtual environment is activated first!
 # You should see (venv) in your prompt

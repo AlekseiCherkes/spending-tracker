@@ -51,10 +51,10 @@ setup_app_user_cron() {
     # Get existing cron jobs
     sudo -u "$APP_USER" crontab -l > "$temp_cron" 2>/dev/null || true
 
-    # Add backup job (daily at 2:00 AM)
+        # Add backup job (daily at 2:00 AM)
     if ! grep -q "backup.sh" "$temp_cron"; then
         echo "# Daily backup at 2:00 AM" >> "$temp_cron"
-        echo "0 2 * * * $APP_DIR/scripts/backup.sh >> $APP_DIR/logs/backup.log 2>&1" >> "$temp_cron"
+        echo "0 2 * * * $APP_DIR/deploy/backup.sh >> $APP_DIR/logs/backup.log 2>&1" >> "$temp_cron"
         log_info "Added daily backup job"
     else
         log_warning "Backup job already exists"
@@ -63,7 +63,7 @@ setup_app_user_cron() {
     # Add monitoring job (every 5 minutes)
     if ! grep -q "monitor.sh" "$temp_cron"; then
         echo "# System monitoring every 5 minutes" >> "$temp_cron"
-        echo "*/5 * * * * $APP_DIR/scripts/monitor.sh summary >> $APP_DIR/logs/monitor.log 2>&1" >> "$temp_cron"
+        echo "*/5 * * * * $APP_DIR/deploy/monitor.sh summary >> $APP_DIR/logs/monitor.log 2>&1" >> "$temp_cron"
         log_info "Added monitoring job"
     else
         log_warning "Monitoring job already exists"
@@ -72,7 +72,7 @@ setup_app_user_cron() {
     # Add weekly full monitoring (Sundays at 3:00 AM)
     if ! grep -q "monitor.sh full" "$temp_cron"; then
         echo "# Weekly full monitoring report" >> "$temp_cron"
-        echo "0 3 * * 0 $APP_DIR/scripts/monitor.sh full >> $APP_DIR/logs/weekly-report.log 2>&1" >> "$temp_cron"
+        echo "0 3 * * 0 $APP_DIR/deploy/monitor.sh full >> $APP_DIR/logs/weekly-report.log 2>&1" >> "$temp_cron"
         log_info "Added weekly monitoring report"
     else
         log_warning "Weekly monitoring job already exists"

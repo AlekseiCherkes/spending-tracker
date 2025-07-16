@@ -248,7 +248,15 @@ run_tests() {
 
         # Run quality checks if available
         if [[ -f scripts/dev.sh ]]; then
-            ./scripts/dev.sh check || true
+            echo "Running quality checks..."
+            if ./scripts/dev.sh check; then
+                echo "✅ All quality checks passed"
+            else
+                echo "❌ Quality checks failed - deployment aborted"
+                exit 1
+            fi
+        else
+            echo "⚠️  Quality check script not found, skipping checks"
         fi
 EOF
 
@@ -284,8 +292,8 @@ show_status() {
     echo "  - Restart service:     sudo systemctl restart $APP_NAME"
     echo "  - Stop service:        sudo systemctl stop $APP_NAME"
     echo "  - Check status:        sudo systemctl status $APP_NAME"
-    echo "  - Run backup:          sudo -u $APP_USER $APP_DIR/scripts/backup.sh"
-    echo "  - Update application:  sudo $APP_DIR/scripts/update.sh"
+    echo "  - Run backup:          sudo -u $APP_USER $APP_DIR/deploy/backup.sh"
+    echo "  - Update application:  sudo $APP_DIR/deploy/update.sh"
     echo
     echo "Application Directory: $APP_DIR"
     echo "Configuration File:    $APP_DIR/.env"
