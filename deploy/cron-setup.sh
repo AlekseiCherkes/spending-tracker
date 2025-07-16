@@ -66,6 +66,7 @@ setup_app_user_cron() {
 
     # Create temporary cron file
     local temp_cron=$(mktemp)
+    chown "$APP_USER:$APP_USER" "$temp_cron"
 
     # Get existing cron jobs
     sudo -u "$APP_USER" crontab -l > "$temp_cron" 2>/dev/null || true
