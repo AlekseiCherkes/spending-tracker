@@ -85,15 +85,15 @@ check_memory_usage() {
     local available_mb=$((available / 1024))
 
     if [[ $used_percent -gt $MEMORY_THRESHOLD ]]; then
-        log_warning "High memory usage: ${used_percent}% (${available_mb}MB available)"
+        log_warning "High memory usage: ${used_percent}% (${available_mb}MB available)" >&2
     else
-        log_success "Memory usage: ${used_percent}% (${available_mb}MB available)"
+        log_success "Memory usage: ${used_percent}% (${available_mb}MB available)" >&2
     fi
 
     # Show top memory consumers
     if [[ $used_percent -gt $MEMORY_THRESHOLD ]]; then
-        echo "Top memory consumers:"
-        ps aux --sort=-%mem | head -6
+        echo "Top memory consumers:" >&2
+        ps aux --sort=-%mem | head -6 >&2
     fi
 
     echo "$used_percent"
@@ -108,15 +108,15 @@ check_disk_usage() {
     local available_gb=$((available / 1024 / 1024))
 
     if [[ $used_percent -gt $DISK_THRESHOLD ]]; then
-        log_warning "High disk usage: ${used_percent}% (${available_gb}GB available)"
+        log_warning "High disk usage: ${used_percent}% (${available_gb}GB available)" >&2
     else
-        log_success "Disk usage: ${used_percent}% (${available_gb}GB available)"
+        log_success "Disk usage: ${used_percent}% (${available_gb}GB available)" >&2
     fi
 
     # Check application directory size
     if [[ -d "$APP_DIR" ]]; then
         local app_size=$(du -sh "$APP_DIR" | cut -f1)
-        log_info "Application directory size: $app_size"
+        log_info "Application directory size: $app_size" >&2
     fi
 
     echo "$used_percent"
@@ -131,13 +131,13 @@ check_cpu_usage() {
     local cpu_percent=${cpu_usage%.*}
 
     if [[ $cpu_percent -gt $CPU_THRESHOLD ]]; then
-        log_warning "High CPU usage: ${cpu_percent}%"
+        log_warning "High CPU usage: ${cpu_percent}%" >&2
 
         # Show top CPU consumers
-        echo "Top CPU consumers:"
-        ps aux --sort=-%cpu | head -6
+        echo "Top CPU consumers:" >&2
+        ps aux --sort=-%cpu | head -6 >&2
     else
-        log_success "CPU usage: ${cpu_percent}%"
+        log_success "CPU usage: ${cpu_percent}%" >&2
     fi
 
     echo "$cpu_percent"
@@ -227,6 +227,27 @@ generate_alert() {
     echo "🚨 ALERT [$alert_type]: $message"
 }
 
+# Helper functions to get numeric values only
+get_memory_percent() {
+    local mem_info
+    mem_info=$(free | grep Mem)
+    local total=$(echo "$mem_info" | awk '{print $2}')
+    local used=$(echo "$mem_info" | awk '{print $3}')
+    echo $((used * 100 / total))
+}
+
+get_disk_percent() {
+    local disk_info
+    disk_info=$(df / | tail -1)
+    echo $(echo "$disk_info" | awk '{print $5}' | sed 's/%//')
+}
+
+get_cpu_percent() {
+    local cpu_usage
+    cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | awk -F'%' '{print $1}')
+    echo ${cpu_usage%.*}
+}
+
 show_summary() {
     echo
     echo "=== System Health Summary ==="
@@ -239,20 +260,25 @@ show_summary() {
     local service_status
     service_status=$(check_service_status)
 
-    # Resource usage
+    echo
+    echo "=== Resource Usage ==="
+
+    # Show resource usage with logs
+    check_memory_usage >/dev/null
+    check_disk_usage >/dev/null
+    check_cpu_usage >/dev/null
+
+    # Get numeric values only
     local mem_usage
     local disk_usage
     local cpu_usage
 
-    mem_usage=$(check_memory_usage)
-    disk_usage=$(check_disk_usage)
-    cpu_usage=$(check_cpu_usage)
+    mem_usage=$(get_memory_percent)
+    disk_usage=$(get_disk_percent)
+    cpu_usage=$(get_cpu_percent)
 
     echo
-    echo "=== Resource Usage ==="
-    echo "Memory: ${mem_usage}%"
-    echo "Disk: ${disk_usage}%"
-    echo "CPU: ${cpu_usage}%"
+    echo "Summary: Memory: ${mem_usage}%, Disk: ${disk_usage}%, CPU: ${cpu_usage}%"
     echo
 
     # Generate alerts if needed
