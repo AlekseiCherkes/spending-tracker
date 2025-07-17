@@ -68,13 +68,19 @@ test_locally() {
 
     log_info "Running local tests on the built image..."
 
-    # Create test .env file for deployment testing
-    echo "TELEGRAM_BOT_TOKEN=test_token_for_deployment_test" > .env.test
+    # Check if .env file exists
+    if [ ! -f ".env" ]; then
+        log_warning "No .env file found in project root"
+        log_warning "Skipping local test - create .env file with TELEGRAM_BOT_TOKEN for testing"
+        return
+    fi
 
-    # Start a test container with explicit platform
+    log_info "Using existing .env file for testing"
+
+    # Start a test container with explicit platform using real .env file
     CONTAINER_ID=$(docker run -d \
         --platform linux/amd64 \
-        -v "$(pwd)/.env.test:/app/.env:ro" \
+        -v "$(pwd)/.env:/app/.env:ro" \
         -e DB_PATH="/app/data/test.db" \
         -e LOG_LEVEL="DEBUG" \
         "$IMAGE_NAME:$IMAGE_TAG")
@@ -85,12 +91,17 @@ test_locally() {
     # Get container logs for analysis
     LOGS=$(docker logs "$CONTAINER_ID" 2>&1)
 
-    # Check if application started properly (expected token error is normal for testing)
+    # Check if application started properly with real token
     if echo "$LOGS" | grep -q "🚀 Starting Spending Tracker Bot" || \
-       echo "$LOGS" | grep -q "InvalidToken" || \
        echo "$LOGS" | grep -q "spending_tracker" || \
        echo "$LOGS" | grep -q "Bot commands registered"; then
-        log_success "Local test passed - application starts correctly (expected token error is normal for testing)"
+        log_success "Local test passed - application starts correctly with real token"
+    elif echo "$LOGS" | grep -q "InvalidToken"; then
+        log_error "Local test failed - invalid Telegram bot token in .env file"
+        echo "Container logs:"
+        echo "$LOGS"
+        docker rm -f "$CONTAINER_ID" 2>/dev/null || true
+        exit 1
     else
         log_error "Local test failed - application failed to start properly"
         echo "Container logs:"
@@ -99,10 +110,9 @@ test_locally() {
         exit 1
     fi
 
-    # Clean up test container and test files
+    # Clean up test container
     docker rm -f "$CONTAINER_ID"
-    rm -f .env.test
-    log_success "Test container and files cleaned up"
+    log_success "Test container cleaned up"
 }
 
 # Export Docker image to tar file
