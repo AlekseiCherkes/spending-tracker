@@ -5,11 +5,11 @@
 
 # Logging functions for consistency
 log_info() {
-    echo "ℹ️  $1"
+    echo "ℹ️  $1" >&2
 }
 
 log_warning() {
-    echo "⚠️  $1"
+    echo "⚠️  $1" >&2
 }
 
 log_error() {
@@ -17,5 +17,5 @@ log_error() {
 }
 
 log_success() {
-    echo "✅ $1"
+    echo "✅ $1" >&2
 }
