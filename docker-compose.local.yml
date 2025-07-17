@@ -5,11 +5,11 @@ services:
     platform: linux/amd64
     container_name: spending-tracker-local
     environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-test_token_for_local_testing}
       - DB_PATH=/app/data/spending_tracker.db
       - LOG_LEVEL=DEBUG
       - ENVIRONMENT=development
     volumes:
+      - ./.env:/app/.env:ro
       - ./local-data:/app/data
       - ./local-logs:/app/logs
     networks:

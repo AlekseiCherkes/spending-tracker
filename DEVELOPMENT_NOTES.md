@@ -110,6 +110,36 @@ python -m spending_tracker
 ./scripts/build-and-deploy.sh --skip-test  # Deploy without local testing
 ```
 
+## Environment Configuration Management
+
+The project now uses `.env` files for all configuration:
+
+- **Configuration Source**: All environments read from `.env` file in working directory
+- **Local development**: Creates test `.env` automatically if missing
+- **Production**: Requires manual `.env` file creation with real token
+- **Setup**: Copy `.env.example` to `.env` and set your `TELEGRAM_BOT_TOKEN`
+- **Docker**: `.env` file is mounted as read-only volume in containers
+
+This provides consistent configuration management across all deployment scenarios.
+
+### Production Setup
+
+For initial production deployment, create the `.env` file on the server:
+
+```bash
+# SSH to production server
+ssh spending_tracker
+
+# Navigate to app directory
+cd /opt/spending-tracker
+
+# Create .env file with your bot token
+echo "TELEGRAM_BOT_TOKEN=your_real_bot_token_here" > .env
+
+# Verify the file
+cat .env
+```
+
 ## Docker Deployment Workflow
 
 ### Local Development

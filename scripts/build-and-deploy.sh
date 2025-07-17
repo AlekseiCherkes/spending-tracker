@@ -2,22 +2,15 @@
 set -e
 set -x
 
+# Source common configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common-config.sh"
+
 # Configuration
 REMOTE_HOST="spending_tracker"  # SSH alias for production server
 APP_DIR="/opt/spending-tracker"
 IMAGE_NAME="spending-tracker"
 IMAGE_TAG="latest"
-
-# Colors for output
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log_info() { echo -e "${BLUE}[INFO]${NC} $1" >&2; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1" >&2; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1" >&2; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 # Configuration validation
@@ -75,10 +68,13 @@ test_locally() {
 
     log_info "Running local tests on the built image..."
 
+    # Create test .env file for deployment testing
+    echo "TELEGRAM_BOT_TOKEN=test_token_for_deployment_test" > .env.test
+
     # Start a test container with explicit platform
     CONTAINER_ID=$(docker run -d \
         --platform linux/amd64 \
-        -e TELEGRAM_BOT_TOKEN="test_token_for_deployment_test" \
+        -v "$(pwd)/.env.test:/app/.env:ro" \
         -e DB_PATH="/app/data/test.db" \
         -e LOG_LEVEL="DEBUG" \
         "$IMAGE_NAME:$IMAGE_TAG")
@@ -103,9 +99,10 @@ test_locally() {
         exit 1
     fi
 
-    # Clean up test container
+    # Clean up test container and test files
     docker rm -f "$CONTAINER_ID"
-    log_success "Test container cleaned up"
+    rm -f .env.test
+    log_success "Test container and files cleaned up"
 }
 
 # Export Docker image to tar file

@@ -1,17 +1,9 @@
 #!/bin/bash
 set -e
 
-# Colors for output
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+# Source common configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common-config.sh"
 
 echo "🧪 Local Testing Workflow for Spending Tracker Bot"
 echo "=================================================="
@@ -22,10 +14,11 @@ if [ ! -f "docker-compose.local.yml" ]; then
     exit 1
 fi
 
-# Set test token if not provided
-if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
-    log_warning "TELEGRAM_BOT_TOKEN not set, using test token"
-    export TELEGRAM_BOT_TOKEN="test_token_for_local_testing"
+# Check if .env file exists for local testing
+if [ ! -f ".env" ]; then
+    log_warning ".env file not found - creating test .env file"
+    log_info "For production, copy .env.example and set real token"
+    echo "TELEGRAM_BOT_TOKEN=test_token_for_local_testing" > .env
 fi
 
 # Create local directories
@@ -44,7 +37,7 @@ docker compose -f docker-compose.local.yml build
 log_info "Running basic image tests..."
 CONTAINER_ID=$(docker run -d \
     --platform linux/amd64 \
-    -e TELEGRAM_BOT_TOKEN="test_token" \
+    -v "$(pwd)/.env:/app/.env:ro" \
     -e DB_PATH="/app/data/test.db" \
     spending-tracker:latest)
 

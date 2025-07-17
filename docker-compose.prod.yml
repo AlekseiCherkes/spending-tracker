@@ -4,11 +4,11 @@ services:
     container_name: spending-tracker
     restart: unless-stopped
     environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - DB_PATH=/app/data/spending_tracker.db
       - LOG_LEVEL=INFO
       - ENVIRONMENT=production
     volumes:
+      - /opt/spending-tracker/.env:/app/.env:ro
       - /opt/spending-tracker/data:/app/data
       - /opt/spending-tracker/logs:/app/logs
       - /opt/spending-tracker/backups:/app/backups

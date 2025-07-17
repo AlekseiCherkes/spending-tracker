@@ -5,6 +5,7 @@ Simple Telegram Bot for Spending Tracker
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -14,8 +15,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from .dal import SpendingTrackerDAL
 from .expense_state import DraftExpense, expense_state_manager
 
-# Load environment variables
-load_dotenv()
+# Environment variables are loaded in _check_env_file_and_token() function
 
 # Set up logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -429,15 +429,40 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text("❌ Трата отменена.")
 
 
-def run_bot() -> None:
-    """Run the bot."""
-    # Get bot token from environment
+def _check_env_file_and_token() -> Optional[str]:
+    """Check for .env file and TELEGRAM_BOT_TOKEN. Return token or None."""
+    env_file_path = Path.cwd() / ".env"
+
+    if not env_file_path.exists():
+        logger.error("❌ .env file not found!")
+        logger.error(f"Expected location: {env_file_path.absolute()}")
+        logger.error("Please create a .env file with your bot token:")
+        logger.error("TELEGRAM_BOT_TOKEN=your_bot_token_here")
+        logger.error("")
+        logger.error("You can copy from example: cp .env.example .env")
+        return None
+
+    # Load environment variables from .env file
+    load_dotenv(env_file_path)
     token = os.getenv("TELEGRAM_BOT_TOKEN")
 
     if not token:
-        logger.error("❌ TELEGRAM_BOT_TOKEN not found in environment variables!")
-        logger.error("Please create a .env file with your bot token:")
-        logger.error("TELEGRAM_BOT_TOKEN=your_token_here")
+        logger.error("❌ TELEGRAM_BOT_TOKEN not found in .env file!")
+        logger.error(f"File location: {env_file_path.absolute()}")
+        logger.error("Please add TELEGRAM_BOT_TOKEN to your .env file:")
+        logger.error("TELEGRAM_BOT_TOKEN=your_bot_token_here")
+        return None
+
+    logger.info(f"✅ Loaded configuration from {env_file_path.absolute()}")
+    return token
+
+
+def run_bot() -> None:
+    """Run the bot."""
+    # Get bot token from .env file
+    token = _check_env_file_and_token()
+
+    if not token:
         return
 
     logger.info("🚀 Starting Spending Tracker Bot...")
