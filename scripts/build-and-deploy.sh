@@ -1,6 +1,5 @@
 #!/bin/bash
 set -e
-set -x
 
 # Source common configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
