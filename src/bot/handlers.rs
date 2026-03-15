@@ -119,7 +119,7 @@ pub async fn handle_callback(
     db: Arc<Db>,
     drafts: Arc<DraftStore>,
 ) -> HandlerResult {
-    bot.answer_callback_query(&q.id).await?;
+    bot.answer_callback_query(q.id.clone()).await?;
 
     let data = match q.data.as_deref() {
         Some(d) => d,
