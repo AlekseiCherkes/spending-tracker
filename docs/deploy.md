@@ -28,8 +28,10 @@ RestartSec=5
 Environment=TELOXIDE_TOKEN=your-bot-token-here
 Environment=DATABASE_PATH=/opt/spending-tracker/data/spending_tracker.db
 Environment=RUST_LOG=info
-Environment=ALEX_TELEGRAM_ID=5033919666
-Environment=HANNA_TELEGRAM_ID=0000000000
+
+# Only for pre-seeded data
+Environment=ALEX_TELEGRAM_ID=your-telegram-id
+Environment=HANNA_TELEGRAM_ID=other-telegram-id
 
 [Install]
 WantedBy=multi-user.target
