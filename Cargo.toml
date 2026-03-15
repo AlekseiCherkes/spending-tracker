@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-teloxide = { version = "0.17", features = ["macros"] }
+teloxide = { version = "0.17", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 rusqlite = { version = "0.39", features = ["bundled"] }
 log = "0.4"
