@@ -1,2 +1,3 @@
 # spending-tracker
-Simple rust-based web app for personal spending tracking.
+
+Simple rust-based telegram app for personal spending tracking.
