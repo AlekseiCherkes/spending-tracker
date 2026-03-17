@@ -38,8 +38,10 @@ Data access layer wrapping rusqlite.
 
 ## Key Decisions
 
+- `rusqlite` with `bundled` feature — statically links SQLite for musl cross-compilation
+- `teloxide` with `rustls` (not native-tls) — avoids OpenSSL dependency in cross-compilation
 - Single SQLite connection behind `Arc<Mutex<>>` — sufficient for low-traffic family bot
 - `REAL` for amounts — no decimal crate needed for personal finance
 - Simple version-based migrations (no external framework)
 - `INSERT OR IGNORE` for idempotent seeding
-- Telegram user IDs from env vars (with fallback defaults for tests)
+- Seed data runs once if users table is empty; telegram IDs from env vars with fallback defaults
