@@ -14,7 +14,7 @@ cross build --release --target x86_64-unknown-linux-musl
 echo "==> Uploading files to staging area..."
 ssh "$REMOTE" "mkdir -p $TMP_DIR/scripts"
 scp target/x86_64-unknown-linux-musl/release/spending-tracker "$REMOTE:$TMP_DIR/"
-scp scripts/backup.sh scripts/check_logs.sh "$REMOTE:$TMP_DIR/scripts/"
+scp scripts/server/backup.sh scripts/server/check_logs.sh "$REMOTE:$TMP_DIR/scripts/"
 
 echo "==> Installing files..."
 ssh "$REMOTE" "sudo mv $TMP_DIR/spending-tracker $REMOTE_DIR/ && \
