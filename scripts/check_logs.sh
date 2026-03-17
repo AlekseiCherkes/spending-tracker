@@ -4,7 +4,7 @@ set -euo pipefail
 
 DB="/opt/spending-tracker/data/spending_tracker.db"
 
-LOGS=$(journalctl -u spending-tracker --since "4 hours ago" -p warning --no-pager 2>/dev/null || true)
+LOGS=$(journalctl -u spending-tracker --since "4 hours ago" -p warning --no-pager 2>/dev/null | grep -v "^-- No entries --$" || true)
 
 if [ -z "$LOGS" ]; then
     exit 0
