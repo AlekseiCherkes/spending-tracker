@@ -2,14 +2,25 @@
 
 ## Server Setup (Ubuntu 24.04)
 
-### 1. Create directories
+### 1. Install dependencies
+
+```bash
+sudo apt update 
+sudo apt install -y cron
+sudo apt install -y sqlite3
+```
+
+Note: Security updates are enabled by default on Ubuntu 24.04 (Google Cloud) via `unattended-upgrades`. 
+So we don't need to worry about them.
+
+### 2. Create directories
 
 ```bash
 sudo mkdir -p /opt/spending-tracker/scripts
 sudo mkdir -p /opt/spending-tracker/data
 ```
 
-### 2. Systemd unit file
+### 3. Systemd unit file
 
 Create `/etc/systemd/system/spending-tracker.service`:
 
@@ -58,7 +69,7 @@ Add:
 - **backup.sh** — daily at 3 AM, dumps SQLite and uploads to Google Drive
 - **check_logs.sh** — every 4 hours, sends warning-level logs to admin via Telegram
 
-### 4. gdrive CLI setup
+### 5. gdrive CLI setup
 
 Install [gdrive](https://github.com/glotlabs/gdrive) and authenticate:
 
