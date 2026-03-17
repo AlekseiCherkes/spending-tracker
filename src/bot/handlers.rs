@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use teloxide::prelude::*;
-use teloxide::types::ParseMode;
+use teloxide::types::{InlineKeyboardMarkup, ParseMode};
 
 use crate::dal::Db;
 use crate::domain::{DraftStore, EditState, SpendingDraft};
@@ -127,10 +127,16 @@ pub async fn handle_callback(
     };
 
     let telegram_id = q.from.id.0 as i64;
-    let chat_id = match q.message {
-        Some(ref m) => m.chat().id,
+    let (chat_id, msg_id) = match q.message {
+        Some(ref m) => (m.chat().id, m.id()),
         None => return Ok(()),
     };
+
+    // Remove inline keyboard from the message that was clicked
+    bot.edit_message_reply_markup(chat_id, msg_id)
+        .reply_markup(InlineKeyboardMarkup::default())
+        .await
+        .ok();
 
     // Whitelist check
     if db.get_user_by_telegram_id(telegram_id).is_none() {
