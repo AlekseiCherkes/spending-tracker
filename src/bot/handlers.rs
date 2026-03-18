@@ -175,7 +175,7 @@ pub async fn handle_callback(
         }
         "save" => {
             let draft = drafts.remove(telegram_id).unwrap();
-            db.insert_spending(
+            let spending_id = db.insert_spending(
                 draft.account_id,
                 draft.amount,
                 draft.category_id,
@@ -183,21 +183,27 @@ pub async fn handle_callback(
                 draft.notes.as_deref(),
             )?;
 
-            let currency_code = db
-                .get_account_by_id(draft.account_id)
-                .and_then(|a| db.get_currency_by_id(a.currency_id))
-                .map(|c| c.currency_code)
-                .unwrap_or_default();
+            let d = build_draft_display(&draft, &db);
+            let created_at = db
+                .get_spending_created_at(spending_id)
+                .unwrap_or_else(|| "—".to_string());
+            let mut text = format!(
+                "✅ Сохранено!\n\nСумма: {}\n{}\n{}\nДата: {}",
+                d.summary_text.trim_start_matches("Сумма: "),
+                d.category_label,
+                d.account_label,
+                created_at,
+            );
+            if let Some(notes) = &draft.notes {
+                text.push_str(&format!("\nЗаметка: {}", notes));
+            }
 
-            bot.edit_message_text(
-                chat_id,
-                msg_id,
-                format!(
-                    "\u{2705} Расход {:.2} {} сохранён!",
-                    draft.amount, currency_code
-                ),
-            )
-            .await?;
+            bot.edit_message_text(chat_id, msg_id, text).await?;
+        }
+        "cancel" => {
+            drafts.remove(telegram_id);
+            bot.edit_message_text(chat_id, msg_id, "❌ Расход отменён.")
+                .await?;
         }
         _ if data.starts_with("cat:") => {
             if let Ok(cat_id) = data[4..].parse::<i64>() {

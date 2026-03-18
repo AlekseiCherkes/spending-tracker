@@ -204,6 +204,16 @@ impl Db {
         )?;
         Ok(conn.last_insert_rowid())
     }
+
+    pub fn get_spending_created_at(&self, id: i64) -> Option<String> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT created_at FROM spendings WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .ok()
+    }
 }
 
 impl Clone for Db {
