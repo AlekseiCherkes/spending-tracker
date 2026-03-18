@@ -51,6 +51,7 @@ pub fn summary_keyboard(
         vec![InlineKeyboardButton::callback(account, "edit_acc")],
         vec![InlineKeyboardButton::callback(note_label, "edit_note")],
         vec![InlineKeyboardButton::callback("✅ Сохранить", "save")],
+        vec![InlineKeyboardButton::callback("❌ Отмена", "cancel")],
     ])
 }
 
