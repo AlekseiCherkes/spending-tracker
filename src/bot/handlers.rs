@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardMarkup, ParseMode};
+use teloxide::types::ParseMode;
 
 use crate::dal::Db;
 use crate::domain::{DraftStore, EditState, SpendingDraft};
@@ -132,19 +132,13 @@ pub async fn handle_callback(
         None => return Ok(()),
     };
 
-    // Remove inline keyboard from the message that was clicked
-    bot.edit_message_reply_markup(chat_id, msg_id)
-        .reply_markup(InlineKeyboardMarkup::default())
-        .await
-        .ok();
-
     // Whitelist check
     if db.get_user_by_telegram_id(telegram_id).is_none() {
         return Ok(());
     }
 
     if drafts.get(telegram_id).is_none() {
-        bot.send_message(chat_id, "Нет активного черновика. Отправьте сумму.")
+        bot.edit_message_text(chat_id, msg_id, "Нет активного черновика. Отправьте сумму.")
             .await?;
         return Ok(());
     }
@@ -153,20 +147,21 @@ pub async fn handle_callback(
         "edit_cat" => {
             drafts.update_state(telegram_id, EditState::ChoosingCategory);
             let categories = db.get_all_categories();
-            bot.send_message(chat_id, "Выберите категорию:")
+            bot.edit_message_text(chat_id, msg_id, "Выберите категорию:")
                 .reply_markup(keyboards::category_keyboard(&categories))
                 .await?;
         }
         "edit_acc" => {
             drafts.update_state(telegram_id, EditState::ChoosingAccount);
             let accounts = db.get_all_accounts();
-            bot.send_message(chat_id, "Выберите счёт:")
+            bot.edit_message_text(chat_id, msg_id, "Выберите счёт:")
                 .reply_markup(keyboards::account_keyboard(&accounts))
                 .await?;
         }
         "edit_note" => {
             drafts.update_state(telegram_id, EditState::EnteringNote);
-            bot.send_message(chat_id, "Введите заметку:").await?;
+            bot.edit_message_text(chat_id, msg_id, "Введите заметку:")
+                .await?;
         }
         "save" => {
             let draft = drafts.remove(telegram_id).unwrap();
@@ -184,8 +179,9 @@ pub async fn handle_callback(
                 .map(|c| c.currency_code)
                 .unwrap_or_default();
 
-            bot.send_message(
+            bot.edit_message_text(
                 chat_id,
+                msg_id,
                 format!(
                     "\u{2705} Расход {:.2} {} сохранён!",
                     draft.amount, currency_code
@@ -198,7 +194,7 @@ pub async fn handle_callback(
                 drafts.update_category(telegram_id, cat_id);
                 let updated = drafts.get(telegram_id).unwrap();
                 let summary = format_summary(&updated, &db);
-                bot.send_message(chat_id, summary)
+                bot.edit_message_text(chat_id, msg_id, summary)
                     .parse_mode(ParseMode::Html)
                     .reply_markup(keyboards::summary_keyboard())
                     .await?;
@@ -209,7 +205,7 @@ pub async fn handle_callback(
                 drafts.update_account(telegram_id, acc_id);
                 let updated = drafts.get(telegram_id).unwrap();
                 let summary = format_summary(&updated, &db);
-                bot.send_message(chat_id, summary)
+                bot.edit_message_text(chat_id, msg_id, summary)
                     .parse_mode(ParseMode::Html)
                     .reply_markup(keyboards::summary_keyboard())
                     .await?;
