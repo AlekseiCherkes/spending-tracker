@@ -35,7 +35,7 @@ fn build_draft_display(draft: &SpendingDraft, db: &Db) -> DraftDisplay {
 
     DraftDisplay {
         summary_text: format!("Сумма: {:.2} {}", draft.amount, currency_code),
-        category_label: category_name,
+        category_label: keyboards::format_category(&category_name),
         account_label: format!("{} ({})", account_name, currency_code),
     }
 }

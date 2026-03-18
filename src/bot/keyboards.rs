@@ -2,6 +2,41 @@ use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 
 use crate::dal::{Account, Category};
 
+pub fn category_emoji(name: &str) -> &'static str {
+    match name {
+        "Продукты и хозтовары" => "🛒",
+        "Еда вне дома" => "🍽️",
+        "Кофе и вкусняшки" => "☕",
+        "Развлечения и отдых" => "🎭",
+        "Одежда" => "👗",
+        "Здоровье и медицина" => "💊",
+        "Спорт, забота о себе" => "🏋️",
+        "Образование" => "📚",
+        "Путешествия, туризм" => "✈️",
+        "Дети (образование)" => "🎓",
+        "Дети (хобби)" => "🎨",
+        "Дети (присмотр)" => "👶",
+        "Интернет подписки" => "💻",
+        "Транспорт" => "🚌",
+        "Автомобиль" => "🚗",
+        "Автомобиль (аренда)" => "🔑",
+        "Автомобиль (бензин, паркинг)" => "⛽",
+        "Жильё" => "🏠",
+        "Жильё (обустройство)" => "🔧",
+        "Другое" => "📦",
+        _ => "",
+    }
+}
+
+pub fn format_category(name: &str) -> String {
+    let emoji = category_emoji(name);
+    if emoji.is_empty() {
+        name.to_string()
+    } else {
+        format!("{} {}", emoji, name)
+    }
+}
+
 pub fn summary_keyboard(
     category: &str,
     account: &str,
@@ -24,7 +59,7 @@ pub fn category_keyboard(categories: &[Category]) -> InlineKeyboardMarkup {
         .iter()
         .map(|c| {
             vec![InlineKeyboardButton::callback(
-                &c.name,
+                format_category(&c.name),
                 format!("cat:{}", c.id),
             )]
         })
