@@ -10,32 +10,34 @@ use super::keyboards;
 
 type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
-fn format_summary(draft: &SpendingDraft, db: &Db) -> String {
-    let category = db
+struct DraftDisplay {
+    summary_text: String,
+    category_label: String,
+    account_label: String,
+}
+
+fn build_draft_display(draft: &SpendingDraft, db: &Db) -> DraftDisplay {
+    let category_name = db
         .get_category_by_id(draft.category_id)
         .map(|c| c.name)
         .unwrap_or_else(|| "?".to_string());
-    let account = db
+
+    let (account_name, currency_code) = db
         .get_account_by_id(draft.account_id)
         .map(|a| {
-            let currency = db
+            let code = db
                 .get_currency_by_id(a.currency_id)
                 .map(|c| c.currency_code)
                 .unwrap_or_default();
-            format!("{} ({})", a.name, currency)
+            (a.name, code)
         })
-        .unwrap_or_else(|| "?".to_string());
-    let currency_code = db
-        .get_account_by_id(draft.account_id)
-        .and_then(|a| db.get_currency_by_id(a.currency_id))
-        .map(|c| c.currency_code)
-        .unwrap_or_default();
-    let notes = draft.notes.as_deref().unwrap_or("\u{2014}");
+        .unwrap_or_else(|| ("?".to_string(), String::new()));
 
-    format!(
-        "Сумма: {:.2} {}\nКатегория: {}\nСчёт: {}\nЗаметка: {}",
-        draft.amount, currency_code, category, account, notes
-    )
+    DraftDisplay {
+        summary_text: format!("Сумма: {:.2} {}", draft.amount, currency_code),
+        category_label: category_name,
+        account_label: format!("{} ({})", account_name, currency_code),
+    }
 }
 
 pub async fn handle_message(
@@ -65,10 +67,14 @@ pub async fn handle_message(
         if draft.edit_state == EditState::EnteringNote {
             drafts.update_note(telegram_id, text);
             let updated = drafts.get(telegram_id).unwrap();
-            let summary = format_summary(&updated, &db);
-            bot.send_message(msg.chat.id, summary)
+            let d = build_draft_display(&updated, &db);
+            bot.send_message(msg.chat.id, &d.summary_text)
                 .parse_mode(ParseMode::Html)
-                .reply_markup(keyboards::summary_keyboard())
+                .reply_markup(keyboards::summary_keyboard(
+                    &d.category_label,
+                    &d.account_label,
+                    updated.notes.as_deref(),
+                ))
                 .await?;
             return Ok(());
         }
@@ -104,10 +110,14 @@ pub async fn handle_message(
 
     drafts.set(telegram_id, draft.clone());
 
-    let summary = format_summary(&draft, &db);
-    bot.send_message(msg.chat.id, summary)
+    let d = build_draft_display(&draft, &db);
+    bot.send_message(msg.chat.id, &d.summary_text)
         .parse_mode(ParseMode::Html)
-        .reply_markup(keyboards::summary_keyboard())
+        .reply_markup(keyboards::summary_keyboard(
+            &d.category_label,
+            &d.account_label,
+            draft.notes.as_deref(),
+        ))
         .await?;
 
     Ok(())
@@ -193,10 +203,14 @@ pub async fn handle_callback(
             if let Ok(cat_id) = data[4..].parse::<i64>() {
                 drafts.update_category(telegram_id, cat_id);
                 let updated = drafts.get(telegram_id).unwrap();
-                let summary = format_summary(&updated, &db);
-                bot.edit_message_text(chat_id, msg_id, summary)
+                let d = build_draft_display(&updated, &db);
+                bot.edit_message_text(chat_id, msg_id, &d.summary_text)
                     .parse_mode(ParseMode::Html)
-                    .reply_markup(keyboards::summary_keyboard())
+                    .reply_markup(keyboards::summary_keyboard(
+                        &d.category_label,
+                        &d.account_label,
+                        updated.notes.as_deref(),
+                    ))
                     .await?;
             }
         }
@@ -204,10 +218,14 @@ pub async fn handle_callback(
             if let Ok(acc_id) = data[4..].parse::<i64>() {
                 drafts.update_account(telegram_id, acc_id);
                 let updated = drafts.get(telegram_id).unwrap();
-                let summary = format_summary(&updated, &db);
-                bot.edit_message_text(chat_id, msg_id, summary)
+                let d = build_draft_display(&updated, &db);
+                bot.edit_message_text(chat_id, msg_id, &d.summary_text)
                     .parse_mode(ParseMode::Html)
-                    .reply_markup(keyboards::summary_keyboard())
+                    .reply_markup(keyboards::summary_keyboard(
+                        &d.category_label,
+                        &d.account_label,
+                        updated.notes.as_deref(),
+                    ))
                     .await?;
             }
         }

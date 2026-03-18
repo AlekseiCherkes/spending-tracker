@@ -2,12 +2,20 @@ use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 
 use crate::dal::{Account, Category};
 
-pub fn summary_keyboard() -> InlineKeyboardMarkup {
+pub fn summary_keyboard(
+    category: &str,
+    account: &str,
+    notes: Option<&str>,
+) -> InlineKeyboardMarkup {
+    let note_label = match notes {
+        Some(n) => format!("📝 {}", n),
+        None => "📝 Заметка".to_string(),
+    };
     InlineKeyboardMarkup::new(vec![
-        vec![InlineKeyboardButton::callback("Категория", "edit_cat")],
-        vec![InlineKeyboardButton::callback("Счёт", "edit_acc")],
-        vec![InlineKeyboardButton::callback("Заметка", "edit_note")],
-        vec![InlineKeyboardButton::callback("\u{2705} Сохранить", "save")],
+        vec![InlineKeyboardButton::callback(category, "edit_cat")],
+        vec![InlineKeyboardButton::callback(account, "edit_acc")],
+        vec![InlineKeyboardButton::callback(note_label, "edit_note")],
+        vec![InlineKeyboardButton::callback("✅ Сохранить", "save")],
     ])
 }
 
