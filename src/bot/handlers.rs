@@ -10,6 +10,63 @@ use super::keyboards;
 
 type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
+#[derive(Debug, PartialEq)]
+enum MessageAction {
+    /// User sent a valid amount — create a new draft (and cancel any active note entry).
+    NewAmount(f64),
+    /// User sent text while a draft is in EnteringNote — treat as note for that draft.
+    NoteInput(DraftKey),
+    /// Not a number and no active note entry — show help.
+    ShowHelp,
+}
+
+fn classify_input(text: &str, note_draft_key: Option<DraftKey>) -> MessageAction {
+    let parsed: Option<f64> = text
+        .replace(',', ".")
+        .parse::<f64>()
+        .ok()
+        .filter(|v| *v > 0.0);
+
+    match parsed {
+        Some(amount) => MessageAction::NewAmount(amount),
+        None => match note_draft_key {
+            Some(key) => MessageAction::NoteInput(key),
+            None => MessageAction::ShowHelp,
+        },
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum CallbackAction {
+    EditCategory,
+    EditAccount,
+    EditNote,
+    Save,
+    Cancel,
+    SelectCategory(i64),
+    SelectAccount(i64),
+    Unknown,
+}
+
+fn classify_callback(data: &str) -> CallbackAction {
+    match data {
+        "edit_cat" => CallbackAction::EditCategory,
+        "edit_acc" => CallbackAction::EditAccount,
+        "edit_note" => CallbackAction::EditNote,
+        "save" => CallbackAction::Save,
+        "cancel" => CallbackAction::Cancel,
+        _ if data.starts_with("cat:") => data[4..]
+            .parse()
+            .map(CallbackAction::SelectCategory)
+            .unwrap_or(CallbackAction::Unknown),
+        _ if data.starts_with("acc:") => data[4..]
+            .parse()
+            .map(CallbackAction::SelectAccount)
+            .unwrap_or(CallbackAction::Unknown),
+        _ => CallbackAction::Unknown,
+    }
+}
+
 struct DraftDisplay {
     summary_text: String,
     category_label: String,
@@ -66,16 +123,11 @@ pub async fn handle_message(
         }
     };
 
-    // Try to parse as number first
-    let parsed_amount: Option<f64> = text
-        .replace(',', ".")
-        .parse::<f64>()
-        .ok()
-        .filter(|v| *v > 0.0);
+    let note_key = drafts.find_by_state(telegram_id, EditState::EnteringNote);
+    let action = classify_input(&text, note_key);
 
-    // If it's NOT a number, check if user is entering a note
-    if parsed_amount.is_none() {
-        if let Some(key) = drafts.find_by_state(telegram_id, EditState::EnteringNote) {
+    match action {
+        MessageAction::NoteInput(key) => {
             drafts.update_note(key, text);
             let updated = drafts.get(key).unwrap();
             let d = build_draft_display(&updated, &db);
@@ -90,19 +142,23 @@ pub async fn handle_message(
                 .await?;
             return Ok(());
         }
-
-        bot.send_message(
-            msg.chat.id,
-            "Отправьте сумму (число), чтобы начать запись расхода.",
-        )
-        .await?;
-        return Ok(());
+        MessageAction::ShowHelp => {
+            bot.send_message(
+                msg.chat.id,
+                "Отправьте сумму (число), чтобы начать запись расхода.",
+            )
+            .await?;
+            return Ok(());
+        }
+        MessageAction::NewAmount(_) => {
+            drafts.cancel_note_entry(telegram_id);
+        }
     }
 
-    let amount = parsed_amount.unwrap();
-
-    // If user was entering a note for another draft, cancel that note entry
-    drafts.cancel_note_entry(telegram_id);
+    let amount = match action {
+        MessageAction::NewAmount(v) => v,
+        _ => unreachable!(),
+    };
 
     // Create new draft with defaults
     let default_account_id = user
@@ -169,27 +225,27 @@ pub async fn handle_callback(
         return Ok(());
     }
 
-    match data {
-        "edit_cat" => {
+    match classify_callback(data) {
+        CallbackAction::EditCategory => {
             drafts.update_state(key, EditState::ChoosingCategory);
             let categories = db.get_all_categories();
             bot.edit_message_text(chat_id, msg_id, "Выберите категорию:")
                 .reply_markup(keyboards::category_keyboard(&categories))
                 .await?;
         }
-        "edit_acc" => {
+        CallbackAction::EditAccount => {
             drafts.update_state(key, EditState::ChoosingAccount);
             let accounts = db.get_all_accounts();
             bot.edit_message_text(chat_id, msg_id, "Выберите счёт:")
                 .reply_markup(keyboards::account_keyboard(&accounts))
                 .await?;
         }
-        "edit_note" => {
+        CallbackAction::EditNote => {
             drafts.update_state(key, EditState::EnteringNote);
             bot.edit_message_text(chat_id, msg_id, "Введите заметку:")
                 .await?;
         }
-        "save" => {
+        CallbackAction::Save => {
             let draft = drafts.remove(key).unwrap();
             let spending_id = db.insert_spending(
                 draft.account_id,
@@ -216,43 +272,132 @@ pub async fn handle_callback(
 
             bot.edit_message_text(chat_id, msg_id, text).await?;
         }
-        "cancel" => {
+        CallbackAction::Cancel => {
             drafts.remove(key);
             bot.edit_message_text(chat_id, msg_id, "❌ Расход отменён.")
                 .await?;
         }
-        _ if data.starts_with("cat:") => {
-            if let Ok(cat_id) = data[4..].parse::<i64>() {
-                drafts.update_category(key, cat_id);
-                let updated = drafts.get(key).unwrap();
-                let d = build_draft_display(&updated, &db);
-                bot.edit_message_text(chat_id, msg_id, &d.summary_text)
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(keyboards::summary_keyboard(
-                        &d.category_label,
-                        &d.account_label,
-                        updated.notes.as_deref(),
-                    ))
-                    .await?;
-            }
+        CallbackAction::SelectCategory(cat_id) => {
+            drafts.update_category(key, cat_id);
+            let updated = drafts.get(key).unwrap();
+            let d = build_draft_display(&updated, &db);
+            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboards::summary_keyboard(
+                    &d.category_label,
+                    &d.account_label,
+                    updated.notes.as_deref(),
+                ))
+                .await?;
         }
-        _ if data.starts_with("acc:") => {
-            if let Ok(acc_id) = data[4..].parse::<i64>() {
-                drafts.update_account(key, acc_id);
-                let updated = drafts.get(key).unwrap();
-                let d = build_draft_display(&updated, &db);
-                bot.edit_message_text(chat_id, msg_id, &d.summary_text)
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(keyboards::summary_keyboard(
-                        &d.category_label,
-                        &d.account_label,
-                        updated.notes.as_deref(),
-                    ))
-                    .await?;
-            }
+        CallbackAction::SelectAccount(acc_id) => {
+            drafts.update_account(key, acc_id);
+            let updated = drafts.get(key).unwrap();
+            let d = build_draft_display(&updated, &db);
+            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboards::summary_keyboard(
+                    &d.category_label,
+                    &d.account_label,
+                    updated.notes.as_deref(),
+                ))
+                .await?;
         }
-        _ => {}
+        CallbackAction::Unknown => {}
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- classify_input ---
+
+    #[test]
+    fn test_integer_amount() {
+        assert_eq!(classify_input("50", None), MessageAction::NewAmount(50.0));
+    }
+
+    #[test]
+    fn test_decimal_amount_with_dot() {
+        assert_eq!(classify_input("12.5", None), MessageAction::NewAmount(12.5));
+    }
+
+    #[test]
+    fn test_decimal_amount_with_comma() {
+        assert_eq!(classify_input("12,5", None), MessageAction::NewAmount(12.5));
+    }
+
+    #[test]
+    fn test_zero_is_not_valid_amount() {
+        assert_eq!(classify_input("0", None), MessageAction::ShowHelp);
+    }
+
+    #[test]
+    fn test_negative_is_not_valid_amount() {
+        assert_eq!(classify_input("-10", None), MessageAction::ShowHelp);
+    }
+
+    #[test]
+    fn test_text_without_note_draft_shows_help() {
+        assert_eq!(classify_input("hello", None), MessageAction::ShowHelp);
+    }
+
+    #[test]
+    fn test_text_with_note_draft_is_note_input() {
+        let key: DraftKey = (100, 1);
+        assert_eq!(
+            classify_input("lunch with team", Some(key)),
+            MessageAction::NoteInput(key)
+        );
+    }
+
+    #[test]
+    fn test_number_overrides_note_entry() {
+        let key: DraftKey = (100, 1);
+        assert_eq!(
+            classify_input("42", Some(key)),
+            MessageAction::NewAmount(42.0)
+        );
+    }
+
+    // --- classify_callback ---
+
+    #[test]
+    fn test_callback_edit_actions() {
+        assert_eq!(classify_callback("edit_cat"), CallbackAction::EditCategory);
+        assert_eq!(classify_callback("edit_acc"), CallbackAction::EditAccount);
+        assert_eq!(classify_callback("edit_note"), CallbackAction::EditNote);
+    }
+
+    #[test]
+    fn test_callback_save_cancel() {
+        assert_eq!(classify_callback("save"), CallbackAction::Save);
+        assert_eq!(classify_callback("cancel"), CallbackAction::Cancel);
+    }
+
+    #[test]
+    fn test_callback_select_category() {
+        assert_eq!(
+            classify_callback("cat:5"),
+            CallbackAction::SelectCategory(5)
+        );
+    }
+
+    #[test]
+    fn test_callback_select_account() {
+        assert_eq!(classify_callback("acc:3"), CallbackAction::SelectAccount(3));
+    }
+
+    #[test]
+    fn test_callback_invalid_id() {
+        assert_eq!(classify_callback("cat:abc"), CallbackAction::Unknown);
+    }
+
+    #[test]
+    fn test_callback_unknown() {
+        assert_eq!(classify_callback("something"), CallbackAction::Unknown);
+    }
 }
