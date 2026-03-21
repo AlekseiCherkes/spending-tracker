@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use teloxide::prelude::*;
-use teloxide::types::ParseMode;
+use teloxide::types::{MessageId, ParseMode};
 
 use crate::dal::Db;
-use crate::domain::{DraftStore, EditState, SpendingDraft};
+use crate::domain::{DraftKey, DraftStore, EditState, SpendingDraft};
 
 use super::keyboards;
 
@@ -40,6 +40,10 @@ fn build_draft_display(draft: &SpendingDraft, db: &Db) -> DraftDisplay {
     }
 }
 
+fn draft_key(chat_id: ChatId, msg_id: MessageId) -> DraftKey {
+    (chat_id.0, msg_id.0)
+}
+
 pub async fn handle_message(
     bot: Bot,
     msg: Message,
@@ -62,13 +66,21 @@ pub async fn handle_message(
         }
     };
 
-    // Check if user is entering a note
-    if let Some(draft) = drafts.get(telegram_id) {
-        if draft.edit_state == EditState::EnteringNote {
-            drafts.update_note(telegram_id, text);
-            let updated = drafts.get(telegram_id).unwrap();
+    // Try to parse as number first
+    let parsed_amount: Option<f64> = text
+        .replace(',', ".")
+        .parse::<f64>()
+        .ok()
+        .filter(|v| *v > 0.0);
+
+    // If it's NOT a number, check if user is entering a note
+    if parsed_amount.is_none() {
+        if let Some(key) = drafts.find_by_state(telegram_id, EditState::EnteringNote) {
+            drafts.update_note(key, text);
+            let updated = drafts.get(key).unwrap();
             let d = build_draft_display(&updated, &db);
-            bot.send_message(msg.chat.id, &d.summary_text)
+            let (chat_id, msg_id) = (ChatId(key.0), MessageId(key.1));
+            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboards::summary_keyboard(
                     &d.category_label,
@@ -78,20 +90,19 @@ pub async fn handle_message(
                 .await?;
             return Ok(());
         }
+
+        bot.send_message(
+            msg.chat.id,
+            "Отправьте сумму (число), чтобы начать запись расхода.",
+        )
+        .await?;
+        return Ok(());
     }
 
-    // Try to parse as number
-    let amount: f64 = match text.replace(',', ".").parse() {
-        Ok(v) if v > 0.0 => v,
-        _ => {
-            bot.send_message(
-                msg.chat.id,
-                "Отправьте сумму (число), чтобы начать запись расхода.",
-            )
-            .await?;
-            return Ok(());
-        }
-    };
+    let amount = parsed_amount.unwrap();
+
+    // If user was entering a note for another draft, cancel that note entry
+    drafts.cancel_note_entry(telegram_id);
 
     // Create new draft with defaults
     let default_account_id = user
@@ -104,14 +115,15 @@ pub async fn handle_message(
         category_id: default_category_id,
         account_id: default_account_id,
         reporter_user_id: user.id,
+        telegram_id,
         notes: None,
         edit_state: EditState::Summary,
     };
 
-    drafts.set(telegram_id, draft.clone());
-
     let d = build_draft_display(&draft, &db);
-    bot.send_message(msg.chat.id, &d.summary_text)
+    // Send summary message first, then store draft keyed by that message
+    let sent = bot
+        .send_message(msg.chat.id, &d.summary_text)
         .parse_mode(ParseMode::Html)
         .reply_markup(keyboards::summary_keyboard(
             &d.category_label,
@@ -119,6 +131,8 @@ pub async fn handle_message(
             draft.notes.as_deref(),
         ))
         .await?;
+
+    drafts.set(draft_key(sent.chat.id, sent.id), draft);
 
     Ok(())
 }
@@ -147,7 +161,9 @@ pub async fn handle_callback(
         return Ok(());
     }
 
-    if drafts.get(telegram_id).is_none() {
+    let key = draft_key(chat_id, msg_id);
+
+    if drafts.get(key).is_none() {
         bot.edit_message_text(chat_id, msg_id, "Нет активного черновика. Отправьте сумму.")
             .await?;
         return Ok(());
@@ -155,26 +171,26 @@ pub async fn handle_callback(
 
     match data {
         "edit_cat" => {
-            drafts.update_state(telegram_id, EditState::ChoosingCategory);
+            drafts.update_state(key, EditState::ChoosingCategory);
             let categories = db.get_all_categories();
             bot.edit_message_text(chat_id, msg_id, "Выберите категорию:")
                 .reply_markup(keyboards::category_keyboard(&categories))
                 .await?;
         }
         "edit_acc" => {
-            drafts.update_state(telegram_id, EditState::ChoosingAccount);
+            drafts.update_state(key, EditState::ChoosingAccount);
             let accounts = db.get_all_accounts();
             bot.edit_message_text(chat_id, msg_id, "Выберите счёт:")
                 .reply_markup(keyboards::account_keyboard(&accounts))
                 .await?;
         }
         "edit_note" => {
-            drafts.update_state(telegram_id, EditState::EnteringNote);
+            drafts.update_state(key, EditState::EnteringNote);
             bot.edit_message_text(chat_id, msg_id, "Введите заметку:")
                 .await?;
         }
         "save" => {
-            let draft = drafts.remove(telegram_id).unwrap();
+            let draft = drafts.remove(key).unwrap();
             let spending_id = db.insert_spending(
                 draft.account_id,
                 draft.amount,
@@ -201,14 +217,14 @@ pub async fn handle_callback(
             bot.edit_message_text(chat_id, msg_id, text).await?;
         }
         "cancel" => {
-            drafts.remove(telegram_id);
+            drafts.remove(key);
             bot.edit_message_text(chat_id, msg_id, "❌ Расход отменён.")
                 .await?;
         }
         _ if data.starts_with("cat:") => {
             if let Ok(cat_id) = data[4..].parse::<i64>() {
-                drafts.update_category(telegram_id, cat_id);
-                let updated = drafts.get(telegram_id).unwrap();
+                drafts.update_category(key, cat_id);
+                let updated = drafts.get(key).unwrap();
                 let d = build_draft_display(&updated, &db);
                 bot.edit_message_text(chat_id, msg_id, &d.summary_text)
                     .parse_mode(ParseMode::Html)
@@ -222,8 +238,8 @@ pub async fn handle_callback(
         }
         _ if data.starts_with("acc:") => {
             if let Ok(acc_id) = data[4..].parse::<i64>() {
-                drafts.update_account(telegram_id, acc_id);
-                let updated = drafts.get(telegram_id).unwrap();
+                drafts.update_account(key, acc_id);
+                let updated = drafts.get(key).unwrap();
                 let d = build_draft_display(&updated, &db);
                 bot.edit_message_text(chat_id, msg_id, &d.summary_text)
                     .parse_mode(ParseMode::Html)
