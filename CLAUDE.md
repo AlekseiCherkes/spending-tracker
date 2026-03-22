@@ -19,3 +19,4 @@ Personal family spending tracker: Rust + SQLite + Telegram bot.
 
 - [docs/architecture.md](docs/architecture.md) — modules, data model, key technical decisions
 - [docs/deploy.md](docs/deploy.md) — server setup, systemd, cron, gdrive
+- [docs/local-dev.md](docs/local-dev.md) — local development setup
