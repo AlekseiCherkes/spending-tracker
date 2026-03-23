@@ -5,6 +5,9 @@ REMOTE="spending_tracker"
 REMOTE_DIR="/opt/spending-tracker"
 TMP_DIR="/tmp/spending-tracker-deploy"
 
+echo "==> Running remote backup..."
+ssh "$REMOTE" sudo "$REMOTE_DIR/scripts/backup.sh"
+
 echo "==> Running checks..."
 ./scripts/check.sh
 
