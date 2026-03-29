@@ -97,7 +97,7 @@ pub fn seed_if_empty(conn: &Connection) {
             "Revolut (Joint)",
             eur_id,
             alex_id,
-            "LT41 3250 0685 7871 5897"
+            "LT00 0000 0000 0000 0000"
         ],
     )
     .unwrap();
@@ -107,7 +107,7 @@ pub fn seed_if_empty(conn: &Connection) {
             "Nordea (Spending)",
             eur_id,
             alex_id,
-            "FI90 1432 3500 6670 50"
+            "FI00 0000 0000 0000 00"
         ],
     )
     .unwrap();
