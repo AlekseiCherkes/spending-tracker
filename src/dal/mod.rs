@@ -174,6 +174,22 @@ impl Db {
         .ok()
     }
 
+    pub fn get_all_currencies(&self) -> Vec<Currency> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id, currency_code FROM currencies ORDER BY id")
+            .unwrap();
+        stmt.query_map([], |row| {
+            Ok(Currency {
+                id: row.get(0)?,
+                currency_code: row.get(1)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
     pub fn get_currency_by_id(&self, id: i64) -> Option<Currency> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
@@ -293,6 +309,17 @@ mod tests {
         let accounts = db.get_all_accounts();
         let currency = db.get_currency_by_id(accounts[0].currency_id).unwrap();
         assert_eq!(currency.currency_code, "EUR");
+    }
+
+    #[test]
+    fn test_get_all_currencies() {
+        let db = Db::open_in_memory().unwrap();
+        let codes: Vec<String> = db
+            .get_all_currencies()
+            .into_iter()
+            .map(|c| c.currency_code)
+            .collect();
+        assert_eq!(codes, vec!["EUR", "USD", "BYN"]);
     }
 
     #[test]

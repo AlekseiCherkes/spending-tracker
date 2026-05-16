@@ -3,10 +3,115 @@ use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode};
 
-use crate::dal::Db;
+use crate::dal::{Account, Category, Currency, Db, User};
 use crate::domain::{DraftKey, DraftStore, EditState, SpendingDraft};
 
 use super::keyboards;
+
+#[derive(Debug, PartialEq)]
+enum Command {
+    Accounts,
+    Categories,
+    Currencies,
+    Users,
+}
+
+fn parse_command(text: &str) -> Option<Command> {
+    let first = text.split_whitespace().next()?;
+    let name = first.split('@').next()?;
+    match name {
+        "/accounts" => Some(Command::Accounts),
+        "/categories" => Some(Command::Categories),
+        "/currencies" => Some(Command::Currencies),
+        "/users" => Some(Command::Users),
+        _ => None,
+    }
+}
+
+fn format_users(users: &[User]) -> String {
+    let mut out = String::from("👥 Пользователи\n\n");
+    for u in users {
+        if u.is_admin {
+            out.push_str(&format!("• {} 👑 admin\n", u.name));
+        } else {
+            out.push_str(&format!("• {}\n", u.name));
+        }
+    }
+    out.trim_end().to_string()
+}
+
+fn format_currencies(currencies: &[Currency]) -> String {
+    let mut out = String::from("💱 Валюты\n\n");
+    for c in currencies {
+        out.push_str(&format!("• {}\n", c.currency_code));
+    }
+    out.trim_end().to_string()
+}
+
+fn format_categories(categories: &[Category]) -> String {
+    let mut out = String::from("📋 Категории\n\n");
+    for (i, c) in categories.iter().enumerate() {
+        out.push_str(&format!(
+            "{}. {}\n",
+            i + 1,
+            keyboards::format_category(&c.name)
+        ));
+    }
+    out.trim_end().to_string()
+}
+
+fn format_accounts(accounts: &[Account], users: &[User], currencies: &[Currency]) -> String {
+    let code_of = |id: i64| -> &str {
+        currencies
+            .iter()
+            .find(|c| c.id == id)
+            .map(|c| c.currency_code.as_str())
+            .unwrap_or("?")
+    };
+
+    let mut out = String::from("💼 Счета\n\n");
+
+    for u in users {
+        let owned: Vec<&Account> = accounts
+            .iter()
+            .filter(|a| a.owner_id == Some(u.id))
+            .collect();
+        if owned.is_empty() {
+            continue;
+        }
+        out.push_str(&format!("👤 {}\n", u.name));
+        for a in owned {
+            let default_mark = if u.default_account_id == Some(a.id) {
+                " ⭐ по умолчанию"
+            } else {
+                ""
+            };
+            out.push_str(&format!(
+                "• {} — {}{}\n",
+                a.name,
+                code_of(a.currency_id),
+                default_mark
+            ));
+            if let Some(iban) = &a.iban {
+                out.push_str(&format!("  IBAN: {}\n", iban));
+            }
+        }
+        out.push('\n');
+    }
+
+    let unassigned: Vec<&Account> = accounts.iter().filter(|a| a.owner_id.is_none()).collect();
+    if !unassigned.is_empty() {
+        out.push_str("❓ Без владельца\n");
+        for a in unassigned {
+            out.push_str(&format!("• {} — {}\n", a.name, code_of(a.currency_id)));
+            if let Some(iban) = &a.iban {
+                out.push_str(&format!("  IBAN: {}\n", iban));
+            }
+        }
+    }
+
+    out.trim_end().to_string()
+}
 
 type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
@@ -122,6 +227,21 @@ pub async fn handle_message(
             return Ok(());
         }
     };
+
+    if let Some(cmd) = parse_command(&text) {
+        let response = match cmd {
+            Command::Accounts => format_accounts(
+                &db.get_all_accounts(),
+                &db.get_all_users(),
+                &db.get_all_currencies(),
+            ),
+            Command::Categories => format_categories(&db.get_all_categories()),
+            Command::Currencies => format_currencies(&db.get_all_currencies()),
+            Command::Users => format_users(&db.get_all_users()),
+        };
+        bot.send_message(msg.chat.id, response).await?;
+        return Ok(());
+    }
 
     let note_key = drafts.find_by_state(telegram_id, EditState::EnteringNote);
     let action = classify_input(&text, note_key);
@@ -399,5 +519,173 @@ mod tests {
     #[test]
     fn test_callback_unknown() {
         assert_eq!(classify_callback("something"), CallbackAction::Unknown);
+    }
+
+    // --- parse_command ---
+
+    #[test]
+    fn test_parse_known_commands() {
+        assert_eq!(parse_command("/accounts"), Some(Command::Accounts));
+        assert_eq!(parse_command("/categories"), Some(Command::Categories));
+        assert_eq!(parse_command("/currencies"), Some(Command::Currencies));
+        assert_eq!(parse_command("/users"), Some(Command::Users));
+    }
+
+    #[test]
+    fn test_parse_command_with_bot_suffix() {
+        assert_eq!(parse_command("/users@MyBot"), Some(Command::Users));
+    }
+
+    #[test]
+    fn test_parse_command_ignores_trailing_args() {
+        assert_eq!(parse_command("/accounts please"), Some(Command::Accounts));
+    }
+
+    #[test]
+    fn test_parse_command_unknown() {
+        assert_eq!(parse_command("/wat"), None);
+        assert_eq!(parse_command("hello"), None);
+        assert_eq!(parse_command(""), None);
+    }
+
+    // --- formatters ---
+
+    #[test]
+    fn test_format_users_marks_admin() {
+        let users = vec![
+            User {
+                id: 1,
+                name: "Alex".into(),
+                telegram_id: 1,
+                is_admin: true,
+                default_account_id: None,
+            },
+            User {
+                id: 2,
+                name: "Hanna".into(),
+                telegram_id: 2,
+                is_admin: false,
+                default_account_id: None,
+            },
+        ];
+        let out = format_users(&users);
+        assert!(out.contains("Alex 👑 admin"));
+        assert!(out.contains("• Hanna"));
+        assert!(!out.contains("Hanna 👑"));
+    }
+
+    #[test]
+    fn test_format_currencies_lists_codes() {
+        let currencies = vec![
+            Currency {
+                id: 1,
+                currency_code: "EUR".into(),
+            },
+            Currency {
+                id: 2,
+                currency_code: "USD".into(),
+            },
+        ];
+        let out = format_currencies(&currencies);
+        assert!(out.contains("• EUR"));
+        assert!(out.contains("• USD"));
+    }
+
+    #[test]
+    fn test_format_categories_numbered_in_order() {
+        let categories = vec![
+            Category {
+                id: 1,
+                name: "Продукты и хозтовары".into(),
+                sort_order: 0,
+            },
+            Category {
+                id: 2,
+                name: "Другое".into(),
+                sort_order: 1,
+            },
+        ];
+        let out = format_categories(&categories);
+        let p_idx = out.find("Продукты").unwrap();
+        let o_idx = out.find("Другое").unwrap();
+        assert!(p_idx < o_idx);
+        assert!(out.contains("1. 🛒 Продукты и хозтовары"));
+        assert!(out.contains("2. 📦 Другое"));
+    }
+
+    #[test]
+    fn test_format_accounts_groups_and_marks_default() {
+        let users = vec![
+            User {
+                id: 1,
+                name: "Alex".into(),
+                telegram_id: 1,
+                is_admin: true,
+                default_account_id: Some(10),
+            },
+            User {
+                id: 2,
+                name: "Hanna".into(),
+                telegram_id: 2,
+                is_admin: false,
+                default_account_id: None,
+            },
+        ];
+        let currencies = vec![Currency {
+            id: 1,
+            currency_code: "EUR".into(),
+        }];
+        let accounts = vec![
+            Account {
+                id: 10,
+                name: "Revolut".into(),
+                currency_id: 1,
+                owner_id: Some(1),
+                iban: Some("LT00".into()),
+            },
+            Account {
+                id: 11,
+                name: "Nordea".into(),
+                currency_id: 1,
+                owner_id: Some(1),
+                iban: None,
+            },
+            Account {
+                id: 12,
+                name: "S-pankki".into(),
+                currency_id: 1,
+                owner_id: Some(2),
+                iban: None,
+            },
+        ];
+        let out = format_accounts(&accounts, &users, &currencies);
+        assert!(out.contains("👤 Alex"));
+        assert!(out.contains("👤 Hanna"));
+        assert!(out.contains("Revolut — EUR ⭐ по умолчанию"));
+        assert!(out.contains("Nordea — EUR\n"));
+        assert!(!out.contains("Nordea — EUR ⭐"));
+        assert!(out.contains("IBAN: LT00"));
+        let alex_idx = out.find("Alex").unwrap();
+        let hanna_idx = out.find("Hanna").unwrap();
+        assert!(alex_idx < hanna_idx);
+    }
+
+    #[test]
+    fn test_format_accounts_shows_unassigned() {
+        let users = vec![];
+        let currencies = vec![Currency {
+            id: 1,
+            currency_code: "EUR".into(),
+        }];
+        let accounts = vec![Account {
+            id: 1,
+            name: "Orphan".into(),
+            currency_id: 1,
+            owner_id: None,
+            iban: None,
+        }];
+        let out = format_accounts(&accounts, &users, &currencies);
+        assert!(out.contains("❓ Без владельца"));
+        assert!(out.contains("Orphan — EUR"));
     }
 }
