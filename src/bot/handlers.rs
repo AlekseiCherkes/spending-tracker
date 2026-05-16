@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use teloxide::prelude::*;
-use teloxide::types::{MessageId, ParseMode};
+use teloxide::types::{InputFile, MessageId, ParseMode};
 
 use crate::dal::{Account, Category, Currency, Db, RecentSpending, User};
 use crate::domain::{DraftKey, DraftStore, EditState, SpendingDraft};
@@ -16,6 +16,7 @@ enum Command {
     Users,
     DefaultAccount,
     Recent,
+    Export,
 }
 
 fn parse_command(text: &str) -> Option<Command> {
@@ -28,11 +29,106 @@ fn parse_command(text: &str) -> Option<Command> {
         "/users" => Some(Command::Users),
         "/default_account" => Some(Command::DefaultAccount),
         "/recent" => Some(Command::Recent),
+        "/export" => Some(Command::Export),
         _ => None,
     }
 }
 
 const RECENT_LIMIT: i64 = 25;
+
+const EXPORT_MONTHS: usize = 3;
+
+fn prev_month(year: i32, month: u32) -> (i32, u32) {
+    if month == 1 {
+        (year - 1, 12)
+    } else {
+        (year, month - 1)
+    }
+}
+
+fn russian_month_name(month: u32) -> &'static str {
+    match month {
+        1 => "Январь",
+        2 => "Февраль",
+        3 => "Март",
+        4 => "Апрель",
+        5 => "Май",
+        6 => "Июнь",
+        7 => "Июль",
+        8 => "Август",
+        9 => "Сентябрь",
+        10 => "Октябрь",
+        11 => "Ноябрь",
+        12 => "Декабрь",
+        _ => "",
+    }
+}
+
+fn parse_year_month(year_month: &str) -> Option<(i32, u32)> {
+    let (y, m) = year_month.split_once('-')?;
+    let year: i32 = y.parse().ok()?;
+    let month: u32 = m.parse().ok().filter(|m| (1..=12).contains(m))?;
+    Some((year, month))
+}
+
+fn format_month_label(year_month: &str, is_current: bool) -> String {
+    match parse_year_month(year_month) {
+        Some((year, month)) => {
+            let name = russian_month_name(month);
+            if is_current {
+                format!("{} {} (текущий)", name, year)
+            } else {
+                format!("{} {}", name, year)
+            }
+        }
+        None => year_month.to_string(),
+    }
+}
+
+/// Returns up to `EXPORT_MONTHS` year-months ending in `current_ym`, newest first.
+/// Each entry: (year_month string, is_current).
+fn export_month_options(current_ym: &str) -> Vec<(String, bool)> {
+    let Some((mut year, mut month)) = parse_year_month(current_ym) else {
+        return vec![];
+    };
+    let mut out = Vec::with_capacity(EXPORT_MONTHS);
+    out.push((format!("{:04}-{:02}", year, month), true));
+    for _ in 1..EXPORT_MONTHS {
+        let (y, m) = prev_month(year, month);
+        year = y;
+        month = m;
+        out.push((format!("{:04}-{:02}", year, month), false));
+    }
+    out
+}
+
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+fn build_csv(items: &[RecentSpending]) -> String {
+    let mut out = String::from("Timestamp,Amount,Currency,Category,Account,IBAN,Reporter,Notes\n");
+    for s in items {
+        let notes = s.notes.as_deref().unwrap_or("");
+        let iban = s.account_iban.as_deref().unwrap_or("");
+        out.push_str(&format!(
+            "{},{:.2},{},{},{},{},{},{}\n",
+            csv_escape(&s.created_at),
+            s.amount,
+            csv_escape(&s.currency_code),
+            csv_escape(&s.category_name),
+            csv_escape(&s.account_name),
+            csv_escape(iban),
+            csv_escape(&s.reporter_name),
+            csv_escape(notes),
+        ));
+    }
+    out
+}
 
 fn format_short_datetime(iso: &str) -> String {
     let (date_part, time_part) = iso.split_once('T').unwrap_or((iso, ""));
@@ -205,6 +301,7 @@ enum CallbackAction {
     SelectAccount(i64),
     SetDefaultAccount(i64),
     EditSpending(i64),
+    ExportMonth(String),
     Unknown,
 }
 
@@ -235,6 +332,14 @@ fn classify_callback(data: &str) -> CallbackAction {
             .parse()
             .map(CallbackAction::EditSpending)
             .unwrap_or(CallbackAction::Unknown),
+        _ if data.starts_with("export:") => {
+            let ym = &data[7..];
+            if parse_year_month(ym).is_some() {
+                CallbackAction::ExportMonth(ym.to_string())
+            } else {
+                CallbackAction::Unknown
+            }
+        }
         _ => CallbackAction::Unknown,
     }
 }
@@ -331,6 +436,17 @@ pub async fn handle_message(
                 send.await?;
                 return Ok(());
             }
+            Command::Export => {
+                let current_ym = db.current_year_month_utc();
+                let labeled: Vec<(String, String)> = export_month_options(&current_ym)
+                    .into_iter()
+                    .map(|(ym, is_current)| (format_month_label(&ym, is_current), ym))
+                    .collect();
+                bot.send_message(msg.chat.id, "📤 Выберите месяц для экспорта:")
+                    .reply_markup(keyboards::export_months_keyboard(&labeled))
+                    .await?;
+                return Ok(());
+            }
             other => {
                 let response = match other {
                     Command::Accounts => format_accounts(
@@ -341,7 +457,7 @@ pub async fn handle_message(
                     Command::Categories => format_categories(&db.get_all_categories()),
                     Command::Currencies => format_currencies(&db.get_all_currencies()),
                     Command::Users => format_users(&db.get_all_users()),
-                    Command::DefaultAccount | Command::Recent => unreachable!(),
+                    Command::DefaultAccount | Command::Recent | Command::Export => unreachable!(),
                 };
                 bot.send_message(msg.chat.id, response).await?;
                 return Ok(());
@@ -477,6 +593,26 @@ pub async fn handle_callback(
             .unwrap_or_else(|| "?".to_string());
         bot.edit_message_text(chat_id, msg_id, format!("✅ Счёт по умолчанию: {}", name))
             .await?;
+        return Ok(());
+    }
+
+    if let CallbackAction::ExportMonth(year_month) = action {
+        let items = db.get_spendings_in_month(&year_month);
+        if items.is_empty() {
+            bot.send_message(
+                chat_id,
+                format!(
+                    "В {} нет транзакций.",
+                    format_month_label(&year_month, false)
+                ),
+            )
+            .await?;
+            return Ok(());
+        }
+        let csv = build_csv(&items);
+        let file =
+            InputFile::memory(csv.into_bytes()).file_name(format!("spendings_{}.csv", year_month));
+        bot.send_document(chat_id, file).await?;
         return Ok(());
     }
 
@@ -658,6 +794,7 @@ pub async fn handle_callback(
         }
         CallbackAction::SetDefaultAccount(_) => unreachable!(),
         CallbackAction::EditSpending(_) => unreachable!(),
+        CallbackAction::ExportMonth(_) => unreachable!(),
         CallbackAction::Unknown => {}
     }
 
@@ -794,6 +931,16 @@ mod tests {
     }
 
     #[test]
+    fn test_callback_export_month() {
+        assert_eq!(
+            classify_callback("export:2026-05"),
+            CallbackAction::ExportMonth("2026-05".to_string())
+        );
+        assert_eq!(classify_callback("export:2026-13"), CallbackAction::Unknown);
+        assert_eq!(classify_callback("export:nope"), CallbackAction::Unknown);
+    }
+
+    #[test]
     fn test_callback_select_category() {
         assert_eq!(
             classify_callback("cat:5"),
@@ -838,6 +985,7 @@ mod tests {
             Some(Command::DefaultAccount)
         );
         assert_eq!(parse_command("/recent"), Some(Command::Recent));
+        assert_eq!(parse_command("/export"), Some(Command::Export));
     }
 
     #[test]
@@ -997,6 +1145,138 @@ mod tests {
         assert_eq!(format_recent_spendings(&[]), "🧾 Транзакций пока нет");
     }
 
+    // --- export helpers ---
+
+    #[test]
+    fn test_prev_month_basic() {
+        assert_eq!(prev_month(2026, 5), (2026, 4));
+        assert_eq!(prev_month(2026, 2), (2026, 1));
+    }
+
+    #[test]
+    fn test_prev_month_wraps_year() {
+        assert_eq!(prev_month(2026, 1), (2025, 12));
+    }
+
+    #[test]
+    fn test_parse_year_month_valid() {
+        assert_eq!(parse_year_month("2026-05"), Some((2026, 5)));
+        assert_eq!(parse_year_month("2026-12"), Some((2026, 12)));
+    }
+
+    #[test]
+    fn test_parse_year_month_invalid() {
+        assert!(parse_year_month("2026-00").is_none());
+        assert!(parse_year_month("2026-13").is_none());
+        assert!(parse_year_month("2026").is_none());
+        assert!(parse_year_month("abc-de").is_none());
+    }
+
+    #[test]
+    fn test_format_month_label() {
+        assert_eq!(format_month_label("2026-05", true), "Май 2026 (текущий)");
+        assert_eq!(format_month_label("2026-04", false), "Апрель 2026");
+        assert_eq!(format_month_label("2025-12", false), "Декабрь 2025");
+        // Falls back to raw input on parse failure.
+        assert_eq!(format_month_label("bogus", false), "bogus");
+    }
+
+    #[test]
+    fn test_export_month_options_three_months_back() {
+        let opts = export_month_options("2026-05");
+        assert_eq!(opts.len(), 3);
+        assert_eq!(opts[0], ("2026-05".to_string(), true));
+        assert_eq!(opts[1], ("2026-04".to_string(), false));
+        assert_eq!(opts[2], ("2026-03".to_string(), false));
+    }
+
+    #[test]
+    fn test_export_month_options_crosses_year_boundary() {
+        let opts = export_month_options("2026-01");
+        assert_eq!(
+            opts,
+            vec![
+                ("2026-01".to_string(), true),
+                ("2025-12".to_string(), false),
+                ("2025-11".to_string(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_csv_escape_plain() {
+        assert_eq!(csv_escape("hello"), "hello");
+    }
+
+    #[test]
+    fn test_csv_escape_with_comma() {
+        assert_eq!(csv_escape("a, b"), "\"a, b\"");
+    }
+
+    #[test]
+    fn test_csv_escape_with_quote() {
+        assert_eq!(csv_escape("she said \"hi\""), "\"she said \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn test_csv_escape_with_newline() {
+        assert_eq!(csv_escape("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn test_build_csv_header_and_rows() {
+        let items = vec![
+            RecentSpending {
+                id: 1,
+                amount: 15.5,
+                currency_code: "EUR".into(),
+                account_name: "Revolut".into(),
+                account_iban: Some("LT00 0000 0001".into()),
+                category_name: "Продукты и хозтовары".into(),
+                reporter_name: "Alex".into(),
+                notes: Some("молоко, хлеб".into()),
+                created_at: "2026-05-01T08:00:00".into(),
+            },
+            RecentSpending {
+                id: 2,
+                amount: 4.0,
+                currency_code: "USD".into(),
+                account_name: "Cash".into(),
+                account_iban: None,
+                category_name: "Кофе и вкусняшки".into(),
+                reporter_name: "Hanna".into(),
+                notes: None,
+                created_at: "2026-05-02T09:10:00".into(),
+            },
+        ];
+        let csv = build_csv(&items);
+        let mut lines = csv.lines();
+        assert_eq!(
+            lines.next(),
+            Some("Timestamp,Amount,Currency,Category,Account,IBAN,Reporter,Notes")
+        );
+        assert_eq!(
+            lines.next(),
+            Some(
+                "2026-05-01T08:00:00,15.50,EUR,Продукты и хозтовары,Revolut,LT00 0000 0001,Alex,\"молоко, хлеб\""
+            )
+        );
+        assert_eq!(
+            lines.next(),
+            Some("2026-05-02T09:10:00,4.00,USD,Кофе и вкусняшки,Cash,,Hanna,")
+        );
+        assert_eq!(lines.next(), None);
+    }
+
+    #[test]
+    fn test_build_csv_empty_only_header() {
+        let csv = build_csv(&[]);
+        assert_eq!(
+            csv,
+            "Timestamp,Amount,Currency,Category,Account,IBAN,Reporter,Notes\n"
+        );
+    }
+
     #[test]
     fn test_format_recent_spendings_with_and_without_notes() {
         let items = vec![
@@ -1004,6 +1284,8 @@ mod tests {
                 id: 2,
                 amount: 15.5,
                 currency_code: "EUR".into(),
+                account_name: "Revolut".into(),
+                account_iban: None,
                 category_name: "Продукты и хозтовары".into(),
                 reporter_name: "Alex".into(),
                 notes: Some("молоко".into()),
@@ -1013,6 +1295,8 @@ mod tests {
                 id: 1,
                 amount: 4.0,
                 currency_code: "EUR".into(),
+                account_name: "Revolut".into(),
+                account_iban: None,
                 category_name: "Кофе и вкусняшки".into(),
                 reporter_name: "Hanna".into(),
                 notes: None,

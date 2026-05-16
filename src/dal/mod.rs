@@ -263,11 +263,53 @@ impl Db {
         Ok(())
     }
 
+    /// Returns "YYYY-MM" for the current UTC month (matches the format of stored `created_at`).
+    pub fn current_year_month_utc(&self) -> String {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row("SELECT strftime('%Y-%m', 'now')", [], |r| r.get(0))
+            .unwrap_or_else(|_| "1970-01".to_string())
+    }
+
+    /// All spendings whose `created_at` starts with `year_month` (e.g. "2026-05"),
+    /// ordered chronologically (oldest first). Joined with account/currency/category/user.
+    pub fn get_spendings_in_month(&self, year_month: &str) -> Vec<RecentSpending> {
+        let conn = self.conn.lock().unwrap();
+        let pattern = format!("{}%", year_month);
+        let mut stmt = conn
+            .prepare(
+                "SELECT s.id, s.amount, c.currency_code, a.name, a.iban, cat.name, u.name, s.notes, s.created_at
+                 FROM spendings s
+                 JOIN accounts a ON s.account_id = a.id
+                 JOIN currencies c ON a.currency_id = c.id
+                 JOIN categories cat ON s.category_id = cat.id
+                 JOIN users u ON s.reporter_id = u.id
+                 WHERE s.created_at LIKE ?1
+                 ORDER BY s.created_at ASC, s.id ASC",
+            )
+            .unwrap();
+        stmt.query_map([pattern], |row| {
+            Ok(RecentSpending {
+                id: row.get(0)?,
+                amount: row.get(1)?,
+                currency_code: row.get(2)?,
+                account_name: row.get(3)?,
+                account_iban: row.get(4)?,
+                category_name: row.get(5)?,
+                reporter_name: row.get(6)?,
+                notes: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
     pub fn get_recent_spendings(&self, limit: i64) -> Vec<RecentSpending> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(
-                "SELECT s.id, s.amount, c.currency_code, cat.name, u.name, s.notes, s.created_at
+                "SELECT s.id, s.amount, c.currency_code, a.name, a.iban, cat.name, u.name, s.notes, s.created_at
                  FROM spendings s
                  JOIN accounts a ON s.account_id = a.id
                  JOIN currencies c ON a.currency_id = c.id
@@ -282,10 +324,12 @@ impl Db {
                 id: row.get(0)?,
                 amount: row.get(1)?,
                 currency_code: row.get(2)?,
-                category_name: row.get(3)?,
-                reporter_name: row.get(4)?,
-                notes: row.get(5)?,
-                created_at: row.get(6)?,
+                account_name: row.get(3)?,
+                account_iban: row.get(4)?,
+                category_name: row.get(5)?,
+                reporter_name: row.get(6)?,
+                notes: row.get(7)?,
+                created_at: row.get(8)?,
             })
         })
         .unwrap()
@@ -414,9 +458,105 @@ mod tests {
         assert_eq!(recent[0].notes.as_deref(), Some("third"));
         assert_eq!(recent[0].reporter_name, "Alex");
         assert_eq!(recent[0].currency_code, "EUR");
+        assert_eq!(recent[0].account_name, accounts[0].name);
         assert_eq!(recent[0].category_name, cats[0].name);
         assert_eq!(recent[1].amount, 2.0);
         assert!(recent[1].notes.is_none());
+    }
+
+    #[test]
+    fn test_get_spendings_in_month_includes_account_iban() {
+        let db = Db::open_in_memory().unwrap();
+        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let cats = db.get_all_categories();
+        let currency_id = db.get_all_currencies()[0].id;
+
+        // Create an account with a known IBAN to verify it surfaces in the joined query.
+        let acc_id = {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO accounts (name, currency_id, owner_id, iban) VALUES ('Test', ?1, ?2, 'LT00 1234')",
+                rusqlite::params![currency_id, user.id],
+            )
+            .unwrap();
+            conn.last_insert_rowid()
+        };
+        let id = db
+            .insert_spending(acc_id, 1.0, cats[0].id, user.id, None)
+            .unwrap();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE spendings SET created_at = '2026-05-10T00:00:00' WHERE id = ?1",
+                [id],
+            )
+            .unwrap();
+        }
+        let rows = db.get_spendings_in_month("2026-05");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].account_name, "Test");
+        assert_eq!(rows[0].account_iban.as_deref(), Some("LT00 1234"));
+    }
+
+    #[test]
+    fn test_get_spendings_in_month_filters_and_orders() {
+        let db = Db::open_in_memory().unwrap();
+        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let cats = db.get_all_categories();
+        let accounts = db.get_all_accounts();
+
+        // Insert spendings then rewrite their created_at to known months.
+        let id_a = db
+            .insert_spending(accounts[0].id, 1.0, cats[0].id, user.id, Some("apr1"))
+            .unwrap();
+        let id_b = db
+            .insert_spending(accounts[0].id, 2.0, cats[0].id, user.id, Some("may1"))
+            .unwrap();
+        let id_c = db
+            .insert_spending(accounts[0].id, 3.0, cats[0].id, user.id, Some("may2"))
+            .unwrap();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE spendings SET created_at = ?1 WHERE id = ?2",
+                rusqlite::params!["2026-04-15T10:00:00", id_a],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE spendings SET created_at = ?1 WHERE id = ?2",
+                rusqlite::params!["2026-05-01T08:00:00", id_b],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE spendings SET created_at = ?1 WHERE id = ?2",
+                rusqlite::params!["2026-05-20T22:30:00", id_c],
+            )
+            .unwrap();
+        }
+
+        let may = db.get_spendings_in_month("2026-05");
+        assert_eq!(may.len(), 2);
+        // Chronological order (oldest first).
+        assert_eq!(may[0].notes.as_deref(), Some("may1"));
+        assert_eq!(may[1].notes.as_deref(), Some("may2"));
+
+        let apr = db.get_spendings_in_month("2026-04");
+        assert_eq!(apr.len(), 1);
+        assert_eq!(apr[0].notes.as_deref(), Some("apr1"));
+
+        let mar = db.get_spendings_in_month("2026-03");
+        assert!(mar.is_empty());
+    }
+
+    #[test]
+    fn test_current_year_month_utc_format() {
+        let db = Db::open_in_memory().unwrap();
+        let ym = db.current_year_month_utc();
+        // Format must be "YYYY-MM" so callers can do string filtering against created_at.
+        assert_eq!(ym.len(), 7);
+        assert_eq!(ym.chars().nth(4), Some('-'));
+        assert!(ym[..4].chars().all(|c| c.is_ascii_digit()));
+        assert!(ym[5..].chars().all(|c| c.is_ascii_digit()));
     }
 
     #[test]

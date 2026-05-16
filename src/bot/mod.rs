@@ -18,6 +18,7 @@ pub async fn run(db: Db, drafts: DraftStore) {
 
     let commands = vec![
         BotCommand::new("recent", "🧾 Последние транзакции"),
+        BotCommand::new("export", "📤 Экспорт в CSV"),
         BotCommand::new("accounts", "💼 Счета"),
         BotCommand::new("categories", "📋 Категории"),
         BotCommand::new("currencies", "💱 Валюты"),

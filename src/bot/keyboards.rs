@@ -72,6 +72,20 @@ pub fn confirm_delete_keyboard() -> InlineKeyboardMarkup {
     ]])
 }
 
+/// Each option: (label, year_month). Renders one button per row; callback is `export:<year_month>`.
+pub fn export_months_keyboard(options: &[(String, String)]) -> InlineKeyboardMarkup {
+    let rows: Vec<Vec<InlineKeyboardButton>> = options
+        .iter()
+        .map(|(label, ym)| {
+            vec![InlineKeyboardButton::callback(
+                label.clone(),
+                format!("export:{}", ym),
+            )]
+        })
+        .collect();
+    InlineKeyboardMarkup::new(rows)
+}
+
 pub fn recent_keyboard(spendings: &[RecentSpending]) -> InlineKeyboardMarkup {
     let buttons: Vec<InlineKeyboardButton> = spendings
         .iter()

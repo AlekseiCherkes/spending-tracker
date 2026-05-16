@@ -45,6 +45,8 @@ pub struct RecentSpending {
     pub id: i64,
     pub amount: f64,
     pub currency_code: String,
+    pub account_name: String,
+    pub account_iban: Option<String>,
     pub category_name: String,
     pub reporter_name: String,
     pub notes: Option<String>,
