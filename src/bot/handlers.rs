@@ -48,16 +48,21 @@ fn format_recent_spendings(items: &[RecentSpending]) -> String {
     if items.is_empty() {
         return "🧾 Транзакций пока нет".to_string();
     }
-    let mut out = String::from("🧾 Последние транзакции\n\n");
-    for s in items {
+    let mut out = String::from("🧾 Последние транзакции (нажмите номер, чтобы изменить)\n\n");
+    for (i, s) in items.iter().enumerate() {
         let when = format_short_datetime(&s.created_at);
         let cat = keyboards::format_category(&s.category_name);
         out.push_str(&format!(
-            "{} — {:.2} {} — {} — {}\n",
-            when, s.amount, s.currency_code, cat, s.reporter_name
+            "{}. {} — {:.2} {} — {} — {}\n",
+            i + 1,
+            when,
+            s.amount,
+            s.currency_code,
+            cat,
+            s.reporter_name
         ));
         if let Some(note) = s.notes.as_deref().filter(|n| !n.is_empty()) {
-            out.push_str(&format!("  📝 {}\n", note));
+            out.push_str(&format!("   📝 {}\n", note));
         }
     }
     out.trim_end().to_string()
@@ -152,15 +157,21 @@ type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
 #[derive(Debug, PartialEq)]
 enum MessageAction {
-    /// User sent a valid amount — create a new draft (and cancel any active note entry).
+    /// User sent a valid number while no draft awaits an amount — create a new draft.
     NewAmount(f64),
+    /// User sent a valid number while a draft is in EnteringAmount — update that draft's amount.
+    AmountInput(DraftKey, f64),
     /// User sent text while a draft is in EnteringNote — treat as note for that draft.
     NoteInput(DraftKey),
-    /// Not a number and no active note entry — show help.
+    /// Nothing actionable — show help.
     ShowHelp,
 }
 
-fn classify_input(text: &str, note_draft_key: Option<DraftKey>) -> MessageAction {
+fn classify_input(
+    text: &str,
+    amount_draft_key: Option<DraftKey>,
+    note_draft_key: Option<DraftKey>,
+) -> MessageAction {
     let parsed: Option<f64> = text
         .replace(',', ".")
         .parse::<f64>()
@@ -168,7 +179,10 @@ fn classify_input(text: &str, note_draft_key: Option<DraftKey>) -> MessageAction
         .filter(|v| *v > 0.0);
 
     match parsed {
-        Some(amount) => MessageAction::NewAmount(amount),
+        Some(amount) => match amount_draft_key {
+            Some(key) => MessageAction::AmountInput(key, amount),
+            None => MessageAction::NewAmount(amount),
+        },
         None => match note_draft_key {
             Some(key) => MessageAction::NoteInput(key),
             None => MessageAction::ShowHelp,
@@ -178,24 +192,33 @@ fn classify_input(text: &str, note_draft_key: Option<DraftKey>) -> MessageAction
 
 #[derive(Debug, PartialEq)]
 enum CallbackAction {
+    EditAmount,
     EditCategory,
     EditAccount,
     EditNote,
     Save,
     Cancel,
+    Delete,
+    ConfirmDelete,
+    CancelDelete,
     SelectCategory(i64),
     SelectAccount(i64),
     SetDefaultAccount(i64),
+    EditSpending(i64),
     Unknown,
 }
 
 fn classify_callback(data: &str) -> CallbackAction {
     match data {
+        "edit_amount" => CallbackAction::EditAmount,
         "edit_cat" => CallbackAction::EditCategory,
         "edit_acc" => CallbackAction::EditAccount,
         "edit_note" => CallbackAction::EditNote,
         "save" => CallbackAction::Save,
         "cancel" => CallbackAction::Cancel,
+        "delete" => CallbackAction::Delete,
+        "confirm_delete" => CallbackAction::ConfirmDelete,
+        "cancel_delete" => CallbackAction::CancelDelete,
         _ if data.starts_with("cat:") => data[4..]
             .parse()
             .map(CallbackAction::SelectCategory)
@@ -208,12 +231,17 @@ fn classify_callback(data: &str) -> CallbackAction {
             .parse()
             .map(CallbackAction::SetDefaultAccount)
             .unwrap_or(CallbackAction::Unknown),
+        _ if data.starts_with("edit_sp:") => data[8..]
+            .parse()
+            .map(CallbackAction::EditSpending)
+            .unwrap_or(CallbackAction::Unknown),
         _ => CallbackAction::Unknown,
     }
 }
 
 struct DraftDisplay {
     summary_text: String,
+    amount_label: String,
     category_label: String,
     account_label: String,
 }
@@ -235,8 +263,10 @@ fn build_draft_display(draft: &SpendingDraft, db: &Db) -> DraftDisplay {
         })
         .unwrap_or_else(|| ("?".to_string(), String::new()));
 
+    let amount_label = format!("{:.2} {}", draft.amount, currency_code);
     DraftDisplay {
-        summary_text: format!("Сумма: {:.2} {}", draft.amount, currency_code),
+        summary_text: format!("Сумма: {}", amount_label),
+        amount_label,
         category_label: keyboards::format_category(&category_name),
         account_label: format!("{} ({})", account_name, currency_code),
     }
@@ -291,6 +321,16 @@ pub async fn handle_message(
                     .await?;
                 return Ok(());
             }
+            Command::Recent => {
+                let recent = db.get_recent_spendings(RECENT_LIMIT);
+                let text = format_recent_spendings(&recent);
+                let mut send = bot.send_message(msg.chat.id, text);
+                if !recent.is_empty() {
+                    send = send.reply_markup(keyboards::recent_keyboard(&recent));
+                }
+                send.await?;
+                return Ok(());
+            }
             other => {
                 let response = match other {
                     Command::Accounts => format_accounts(
@@ -301,10 +341,7 @@ pub async fn handle_message(
                     Command::Categories => format_categories(&db.get_all_categories()),
                     Command::Currencies => format_currencies(&db.get_all_currencies()),
                     Command::Users => format_users(&db.get_all_users()),
-                    Command::Recent => {
-                        format_recent_spendings(&db.get_recent_spendings(RECENT_LIMIT))
-                    }
-                    Command::DefaultAccount => unreachable!(),
+                    Command::DefaultAccount | Command::Recent => unreachable!(),
                 };
                 bot.send_message(msg.chat.id, response).await?;
                 return Ok(());
@@ -312,10 +349,28 @@ pub async fn handle_message(
         }
     }
 
+    let amount_key = drafts.find_by_state(telegram_id, EditState::EnteringAmount);
     let note_key = drafts.find_by_state(telegram_id, EditState::EnteringNote);
-    let action = classify_input(&text, note_key);
+    let action = classify_input(&text, amount_key, note_key);
 
     match action {
+        MessageAction::AmountInput(key, new_amount) => {
+            drafts.update_amount(key, new_amount);
+            let updated = drafts.get(key).unwrap();
+            let d = build_draft_display(&updated, &db);
+            let (chat_id, msg_id) = (ChatId(key.0), MessageId(key.1));
+            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboards::summary_keyboard(
+                    &d.amount_label,
+                    &d.category_label,
+                    &d.account_label,
+                    updated.notes.as_deref(),
+                    updated.editing_id.is_some(),
+                ))
+                .await?;
+            return Ok(());
+        }
         MessageAction::NoteInput(key) => {
             drafts.update_note(key, text);
             let updated = drafts.get(key).unwrap();
@@ -324,9 +379,11 @@ pub async fn handle_message(
             bot.edit_message_text(chat_id, msg_id, &d.summary_text)
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboards::summary_keyboard(
+                    &d.amount_label,
                     &d.category_label,
                     &d.account_label,
                     updated.notes.as_deref(),
+                    updated.editing_id.is_some(),
                 ))
                 .await?;
             return Ok(());
@@ -340,7 +397,7 @@ pub async fn handle_message(
             return Ok(());
         }
         MessageAction::NewAmount(_) => {
-            drafts.cancel_note_entry(telegram_id);
+            drafts.cancel_pending_input(telegram_id);
         }
     }
 
@@ -363,6 +420,7 @@ pub async fn handle_message(
         telegram_id,
         notes: None,
         edit_state: EditState::Summary,
+        editing_id: None,
     };
 
     let d = build_draft_display(&draft, &db);
@@ -371,9 +429,11 @@ pub async fn handle_message(
         .send_message(msg.chat.id, &d.summary_text)
         .parse_mode(ParseMode::Html)
         .reply_markup(keyboards::summary_keyboard(
+            &d.amount_label,
             &d.category_label,
             &d.account_label,
             draft.notes.as_deref(),
+            false,
         ))
         .await?;
 
@@ -420,6 +480,40 @@ pub async fn handle_callback(
         return Ok(());
     }
 
+    if let CallbackAction::EditSpending(spending_id) = action {
+        let spending = match db.get_spending_by_id(spending_id) {
+            Some(s) => s,
+            None => {
+                bot.send_message(chat_id, "Транзакция не найдена.").await?;
+                return Ok(());
+            }
+        };
+        let draft = SpendingDraft {
+            amount: spending.amount,
+            category_id: spending.category_id,
+            account_id: spending.account_id,
+            reporter_user_id: spending.reporter_id,
+            telegram_id,
+            notes: spending.notes,
+            edit_state: EditState::Summary,
+            editing_id: Some(spending.id),
+        };
+        let d = build_draft_display(&draft, &db);
+        let sent = bot
+            .send_message(chat_id, &d.summary_text)
+            .parse_mode(ParseMode::Html)
+            .reply_markup(keyboards::summary_keyboard(
+                &d.amount_label,
+                &d.category_label,
+                &d.account_label,
+                draft.notes.as_deref(),
+                true,
+            ))
+            .await?;
+        drafts.set(draft_key(sent.chat.id, sent.id), draft);
+        return Ok(());
+    }
+
     let key = draft_key(chat_id, msg_id);
 
     if drafts.get(key).is_none() {
@@ -429,6 +523,11 @@ pub async fn handle_callback(
     }
 
     match action {
+        CallbackAction::EditAmount => {
+            drafts.update_state(key, EditState::EnteringAmount);
+            bot.edit_message_text(chat_id, msg_id, "Введите новую сумму:")
+                .await?;
+        }
         CallbackAction::EditCategory => {
             drafts.update_state(key, EditState::ChoosingCategory);
             let categories = db.get_all_categories();
@@ -450,24 +549,36 @@ pub async fn handle_callback(
         }
         CallbackAction::Save => {
             let draft = drafts.remove(key).unwrap();
-            let spending_id = db.insert_spending(
-                draft.account_id,
-                draft.amount,
-                draft.category_id,
-                draft.reporter_user_id,
-                draft.notes.as_deref(),
-            )?;
+            let (header, spending_id) = match draft.editing_id {
+                Some(id) => {
+                    db.update_spending(
+                        id,
+                        draft.account_id,
+                        draft.amount,
+                        draft.category_id,
+                        draft.notes.as_deref(),
+                    )?;
+                    ("✅ Изменено!", id)
+                }
+                None => {
+                    let new_id = db.insert_spending(
+                        draft.account_id,
+                        draft.amount,
+                        draft.category_id,
+                        draft.reporter_user_id,
+                        draft.notes.as_deref(),
+                    )?;
+                    ("✅ Сохранено!", new_id)
+                }
+            };
 
             let d = build_draft_display(&draft, &db);
             let created_at = db
                 .get_spending_created_at(spending_id)
                 .unwrap_or_else(|| "—".to_string());
             let mut text = format!(
-                "✅ Сохранено!\n\nСумма: {}\n{}\n{}\nДата: {}",
-                d.summary_text.trim_start_matches("Сумма: "),
-                d.category_label,
-                d.account_label,
-                created_at,
+                "{}\n\nСумма: {}\n{}\n{}\nДата: {}",
+                header, d.amount_label, d.category_label, d.account_label, created_at,
             );
             if let Some(notes) = &draft.notes {
                 text.push_str(&format!("\nЗаметка: {}", notes));
@@ -487,9 +598,11 @@ pub async fn handle_callback(
             bot.edit_message_text(chat_id, msg_id, &d.summary_text)
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboards::summary_keyboard(
+                    &d.amount_label,
                     &d.category_label,
                     &d.account_label,
                     updated.notes.as_deref(),
+                    updated.editing_id.is_some(),
                 ))
                 .await?;
         }
@@ -500,13 +613,51 @@ pub async fn handle_callback(
             bot.edit_message_text(chat_id, msg_id, &d.summary_text)
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboards::summary_keyboard(
+                    &d.amount_label,
                     &d.category_label,
                     &d.account_label,
                     updated.notes.as_deref(),
+                    updated.editing_id.is_some(),
+                ))
+                .await?;
+        }
+        CallbackAction::Delete => {
+            drafts.update_state(key, EditState::ConfirmingDelete);
+            bot.edit_message_text(chat_id, msg_id, "🗑 Удалить эту транзакцию?")
+                .reply_markup(keyboards::confirm_delete_keyboard())
+                .await?;
+        }
+        CallbackAction::ConfirmDelete => {
+            let draft = drafts.remove(key).unwrap();
+            match draft.editing_id {
+                Some(id) => {
+                    db.delete_spending(id)?;
+                    bot.edit_message_text(chat_id, msg_id, "🗑 Транзакция удалена.")
+                        .await?;
+                }
+                None => {
+                    bot.edit_message_text(chat_id, msg_id, "❌ Расход отменён.")
+                        .await?;
+                }
+            }
+        }
+        CallbackAction::CancelDelete => {
+            drafts.update_state(key, EditState::Summary);
+            let updated = drafts.get(key).unwrap();
+            let d = build_draft_display(&updated, &db);
+            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboards::summary_keyboard(
+                    &d.amount_label,
+                    &d.category_label,
+                    &d.account_label,
+                    updated.notes.as_deref(),
+                    updated.editing_id.is_some(),
                 ))
                 .await?;
         }
         CallbackAction::SetDefaultAccount(_) => unreachable!(),
+        CallbackAction::EditSpending(_) => unreachable!(),
         CallbackAction::Unknown => {}
     }
 
@@ -521,49 +672,86 @@ mod tests {
 
     #[test]
     fn test_integer_amount() {
-        assert_eq!(classify_input("50", None), MessageAction::NewAmount(50.0));
+        assert_eq!(
+            classify_input("50", None, None),
+            MessageAction::NewAmount(50.0)
+        );
     }
 
     #[test]
     fn test_decimal_amount_with_dot() {
-        assert_eq!(classify_input("12.5", None), MessageAction::NewAmount(12.5));
+        assert_eq!(
+            classify_input("12.5", None, None),
+            MessageAction::NewAmount(12.5)
+        );
     }
 
     #[test]
     fn test_decimal_amount_with_comma() {
-        assert_eq!(classify_input("12,5", None), MessageAction::NewAmount(12.5));
+        assert_eq!(
+            classify_input("12,5", None, None),
+            MessageAction::NewAmount(12.5)
+        );
     }
 
     #[test]
     fn test_zero_is_not_valid_amount() {
-        assert_eq!(classify_input("0", None), MessageAction::ShowHelp);
+        assert_eq!(classify_input("0", None, None), MessageAction::ShowHelp);
     }
 
     #[test]
     fn test_negative_is_not_valid_amount() {
-        assert_eq!(classify_input("-10", None), MessageAction::ShowHelp);
+        assert_eq!(classify_input("-10", None, None), MessageAction::ShowHelp);
     }
 
     #[test]
     fn test_text_without_note_draft_shows_help() {
-        assert_eq!(classify_input("hello", None), MessageAction::ShowHelp);
+        assert_eq!(classify_input("hello", None, None), MessageAction::ShowHelp);
     }
 
     #[test]
     fn test_text_with_note_draft_is_note_input() {
         let key: DraftKey = (100, 1);
         assert_eq!(
-            classify_input("lunch with team", Some(key)),
+            classify_input("lunch with team", None, Some(key)),
             MessageAction::NoteInput(key)
         );
     }
 
     #[test]
-    fn test_number_overrides_note_entry() {
+    fn test_number_with_amount_entry_is_amount_input() {
         let key: DraftKey = (100, 1);
         assert_eq!(
-            classify_input("42", Some(key)),
+            classify_input("42", Some(key), None),
+            MessageAction::AmountInput(key, 42.0)
+        );
+    }
+
+    #[test]
+    fn test_number_without_amount_entry_creates_new_draft() {
+        let note_key: DraftKey = (100, 1);
+        assert_eq!(
+            classify_input("42", None, Some(note_key)),
             MessageAction::NewAmount(42.0)
+        );
+    }
+
+    #[test]
+    fn test_amount_entry_takes_priority_over_note_entry() {
+        let amount_key: DraftKey = (100, 1);
+        let note_key: DraftKey = (100, 2);
+        assert_eq!(
+            classify_input("42", Some(amount_key), Some(note_key)),
+            MessageAction::AmountInput(amount_key, 42.0)
+        );
+    }
+
+    #[test]
+    fn test_text_in_amount_entry_only_shows_help() {
+        let amount_key: DraftKey = (100, 1);
+        assert_eq!(
+            classify_input("hello", Some(amount_key), None),
+            MessageAction::ShowHelp
         );
     }
 
@@ -571,6 +759,7 @@ mod tests {
 
     #[test]
     fn test_callback_edit_actions() {
+        assert_eq!(classify_callback("edit_amount"), CallbackAction::EditAmount);
         assert_eq!(classify_callback("edit_cat"), CallbackAction::EditCategory);
         assert_eq!(classify_callback("edit_acc"), CallbackAction::EditAccount);
         assert_eq!(classify_callback("edit_note"), CallbackAction::EditNote);
@@ -580,6 +769,28 @@ mod tests {
     fn test_callback_save_cancel() {
         assert_eq!(classify_callback("save"), CallbackAction::Save);
         assert_eq!(classify_callback("cancel"), CallbackAction::Cancel);
+    }
+
+    #[test]
+    fn test_callback_delete_actions() {
+        assert_eq!(classify_callback("delete"), CallbackAction::Delete);
+        assert_eq!(
+            classify_callback("confirm_delete"),
+            CallbackAction::ConfirmDelete
+        );
+        assert_eq!(
+            classify_callback("cancel_delete"),
+            CallbackAction::CancelDelete
+        );
+    }
+
+    #[test]
+    fn test_callback_edit_spending() {
+        assert_eq!(
+            classify_callback("edit_sp:42"),
+            CallbackAction::EditSpending(42)
+        );
+        assert_eq!(classify_callback("edit_sp:abc"), CallbackAction::Unknown);
     }
 
     #[test]
@@ -810,9 +1021,9 @@ mod tests {
         ];
         let out = format_recent_spendings(&items);
         assert!(out.starts_with("🧾 Последние транзакции"));
-        assert!(out.contains("2026-05-16 14:30 — 15.50 EUR — 🛒 Продукты и хозтовары — Alex"));
-        assert!(out.contains("  📝 молоко"));
-        assert!(out.contains("2026-05-15 09:10 — 4.00 EUR — ☕ Кофе и вкусняшки — Hanna"));
+        assert!(out.contains("1. 2026-05-16 14:30 — 15.50 EUR — 🛒 Продукты и хозтовары — Alex"));
+        assert!(out.contains("   📝 молоко"));
+        assert!(out.contains("2. 2026-05-15 09:10 — 4.00 EUR — ☕ Кофе и вкусняшки — Hanna"));
         // Order is preserved (newest first as passed in).
         let alex_idx = out.find("Alex").unwrap();
         let hanna_idx = out.find("Hanna").unwrap();

@@ -10,6 +10,8 @@ pub enum EditState {
     ChoosingCategory,
     ChoosingAccount,
     EnteringNote,
+    EnteringAmount,
+    ConfirmingDelete,
 }
 
 #[derive(Debug, Clone)]
@@ -21,6 +23,8 @@ pub struct SpendingDraft {
     pub telegram_id: i64,
     pub notes: Option<String>,
     pub edit_state: EditState,
+    /// If `Some(id)`, this draft edits an existing spending row instead of inserting a new one.
+    pub editing_id: Option<i64>,
 }
 
 pub struct DraftStore {
@@ -76,6 +80,14 @@ impl DraftStore {
         }
     }
 
+    pub fn update_amount(&self, key: DraftKey, amount: f64) {
+        let mut drafts = self.drafts.lock().unwrap();
+        if let Some(draft) = drafts.get_mut(&key) {
+            draft.amount = amount;
+            draft.edit_state = EditState::Summary;
+        }
+    }
+
     pub fn remove(&self, key: DraftKey) -> Option<SpendingDraft> {
         self.drafts.lock().unwrap().remove(&key)
     }
@@ -90,11 +102,17 @@ impl DraftStore {
             .map(|(k, _)| *k)
     }
 
-    /// Reset a user's draft from EnteringNote back to Summary (e.g. when a new amount arrives).
-    pub fn cancel_note_entry(&self, telegram_id: i64) {
+    /// Reset a user's draft from any text-entry state back to Summary
+    /// (e.g. when a new amount arrives that creates a fresh draft).
+    pub fn cancel_pending_input(&self, telegram_id: i64) {
         let mut drafts = self.drafts.lock().unwrap();
         for draft in drafts.values_mut() {
-            if draft.telegram_id == telegram_id && draft.edit_state == EditState::EnteringNote {
+            if draft.telegram_id == telegram_id
+                && matches!(
+                    draft.edit_state,
+                    EditState::EnteringNote | EditState::EnteringAmount
+                )
+            {
                 draft.edit_state = EditState::Summary;
             }
         }
@@ -116,6 +134,7 @@ mod tests {
             telegram_id: USER_TG,
             notes: None,
             edit_state: EditState::Summary,
+            editing_id: None,
         }
     }
 
@@ -230,12 +249,40 @@ mod tests {
     }
 
     #[test]
-    fn test_cancel_note_entry() {
+    fn test_cancel_pending_input_resets_note_and_amount() {
         let store = DraftStore::new();
         store.set(key(1), make_draft());
+        store.set(key(2), make_draft());
         store.update_state(key(1), EditState::EnteringNote);
+        store.update_state(key(2), EditState::EnteringAmount);
 
-        store.cancel_note_entry(USER_TG);
+        store.cancel_pending_input(USER_TG);
         assert_eq!(store.get(key(1)).unwrap().edit_state, EditState::Summary);
+        assert_eq!(store.get(key(2)).unwrap().edit_state, EditState::Summary);
+    }
+
+    #[test]
+    fn test_cancel_pending_input_leaves_other_states() {
+        let store = DraftStore::new();
+        store.set(key(1), make_draft());
+        store.update_state(key(1), EditState::ChoosingCategory);
+
+        store.cancel_pending_input(USER_TG);
+        assert_eq!(
+            store.get(key(1)).unwrap().edit_state,
+            EditState::ChoosingCategory
+        );
+    }
+
+    #[test]
+    fn test_update_amount() {
+        let store = DraftStore::new();
+        store.set(key(1), make_draft());
+        store.update_state(key(1), EditState::EnteringAmount);
+
+        store.update_amount(key(1), 42.5);
+        let draft = store.get(key(1)).unwrap();
+        assert_eq!(draft.amount, 42.5);
+        assert_eq!(draft.edit_state, EditState::Summary);
     }
 }

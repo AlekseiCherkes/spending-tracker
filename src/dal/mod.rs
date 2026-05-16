@@ -221,6 +221,48 @@ impl Db {
         Ok(conn.last_insert_rowid())
     }
 
+    pub fn get_spending_by_id(&self, id: i64) -> Option<Spending> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT id, account_id, amount, category_id, reporter_id, notes, created_at FROM spendings WHERE id = ?1",
+            [id],
+            |row| {
+                Ok(Spending {
+                    id: row.get(0)?,
+                    account_id: row.get(1)?,
+                    amount: row.get(2)?,
+                    category_id: row.get(3)?,
+                    reporter_id: row.get(4)?,
+                    notes: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            },
+        )
+        .ok()
+    }
+
+    pub fn update_spending(
+        &self,
+        id: i64,
+        account_id: i64,
+        amount: f64,
+        category_id: i64,
+        notes: Option<&str>,
+    ) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE spendings SET account_id = ?1, amount = ?2, category_id = ?3, notes = ?4 WHERE id = ?5",
+            rusqlite::params![account_id, amount, category_id, notes, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_spending(&self, id: i64) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM spendings WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
     pub fn get_recent_spendings(&self, limit: i64) -> Vec<RecentSpending> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
@@ -381,6 +423,60 @@ mod tests {
     fn test_get_recent_spendings_empty() {
         let db = Db::open_in_memory().unwrap();
         assert!(db.get_recent_spendings(25).is_empty());
+    }
+
+    #[test]
+    fn test_get_spending_by_id() {
+        let db = Db::open_in_memory().unwrap();
+        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let cats = db.get_all_categories();
+        let accounts = db.get_all_accounts();
+
+        let id = db
+            .insert_spending(accounts[0].id, 7.25, cats[0].id, user.id, Some("note"))
+            .unwrap();
+        let s = db.get_spending_by_id(id).unwrap();
+        assert_eq!(s.amount, 7.25);
+        assert_eq!(s.category_id, cats[0].id);
+        assert_eq!(s.account_id, accounts[0].id);
+        assert_eq!(s.notes.as_deref(), Some("note"));
+        assert!(db.get_spending_by_id(99_999).is_none());
+    }
+
+    #[test]
+    fn test_update_spending() {
+        let db = Db::open_in_memory().unwrap();
+        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let cats = db.get_all_categories();
+        let accounts = db.get_all_accounts();
+
+        let id = db
+            .insert_spending(accounts[0].id, 5.0, cats[0].id, user.id, Some("old"))
+            .unwrap();
+        db.update_spending(id, accounts[1].id, 9.99, cats[1].id, None)
+            .unwrap();
+        let s = db.get_spending_by_id(id).unwrap();
+        assert_eq!(s.amount, 9.99);
+        assert_eq!(s.account_id, accounts[1].id);
+        assert_eq!(s.category_id, cats[1].id);
+        assert!(s.notes.is_none());
+        // reporter is not changed by update
+        assert_eq!(s.reporter_id, user.id);
+    }
+
+    #[test]
+    fn test_delete_spending() {
+        let db = Db::open_in_memory().unwrap();
+        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let cats = db.get_all_categories();
+        let accounts = db.get_all_accounts();
+
+        let id = db
+            .insert_spending(accounts[0].id, 5.0, cats[0].id, user.id, None)
+            .unwrap();
+        assert!(db.get_spending_by_id(id).is_some());
+        db.delete_spending(id).unwrap();
+        assert!(db.get_spending_by_id(id).is_none());
     }
 
     #[test]

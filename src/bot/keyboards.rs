@@ -1,6 +1,6 @@
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 
-use crate::dal::{Account, Category};
+use crate::dal::{Account, Category, RecentSpending};
 
 pub fn category_emoji(name: &str) -> &'static str {
     match name {
@@ -38,21 +38,50 @@ pub fn format_category(name: &str) -> String {
 }
 
 pub fn summary_keyboard(
+    amount_label: &str,
     category: &str,
     account: &str,
     notes: Option<&str>,
+    editing: bool,
 ) -> InlineKeyboardMarkup {
     let note_label = match notes {
         Some(n) => format!("📝 {}", n),
         None => "📝 Заметка".to_string(),
     };
-    InlineKeyboardMarkup::new(vec![
+    let mut rows = vec![
+        vec![InlineKeyboardButton::callback(
+            format!("💰 {}", amount_label),
+            "edit_amount",
+        )],
         vec![InlineKeyboardButton::callback(category, "edit_cat")],
         vec![InlineKeyboardButton::callback(account, "edit_acc")],
         vec![InlineKeyboardButton::callback(note_label, "edit_note")],
         vec![InlineKeyboardButton::callback("✅ Сохранить", "save")],
-        vec![InlineKeyboardButton::callback("❌ Отмена", "cancel")],
-    ])
+    ];
+    if editing {
+        rows.push(vec![InlineKeyboardButton::callback("🗑 Удалить", "delete")]);
+    }
+    rows.push(vec![InlineKeyboardButton::callback("❌ Отмена", "cancel")]);
+    InlineKeyboardMarkup::new(rows)
+}
+
+pub fn confirm_delete_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![
+        InlineKeyboardButton::callback("✅ Да, удалить", "confirm_delete"),
+        InlineKeyboardButton::callback("❌ Отмена", "cancel_delete"),
+    ]])
+}
+
+pub fn recent_keyboard(spendings: &[RecentSpending]) -> InlineKeyboardMarkup {
+    let buttons: Vec<InlineKeyboardButton> = spendings
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            InlineKeyboardButton::callback(format!("{}", i + 1), format!("edit_sp:{}", s.id))
+        })
+        .collect();
+    let rows: Vec<Vec<InlineKeyboardButton>> = buttons.chunks(5).map(|c| c.to_vec()).collect();
+    InlineKeyboardMarkup::new(rows)
 }
 
 pub fn category_keyboard(categories: &[Category]) -> InlineKeyboardMarkup {
