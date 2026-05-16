@@ -39,3 +39,14 @@ pub struct Spending {
     pub notes: Option<String>,
     pub created_at: String,
 }
+
+#[allow(dead_code)]
+pub struct RecentSpending {
+    pub id: i64,
+    pub amount: f64,
+    pub currency_code: String,
+    pub category_name: String,
+    pub reporter_name: String,
+    pub notes: Option<String>,
+    pub created_at: String,
+}

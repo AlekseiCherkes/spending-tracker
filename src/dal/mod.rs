@@ -221,6 +221,36 @@ impl Db {
         Ok(conn.last_insert_rowid())
     }
 
+    pub fn get_recent_spendings(&self, limit: i64) -> Vec<RecentSpending> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT s.id, s.amount, c.currency_code, cat.name, u.name, s.notes, s.created_at
+                 FROM spendings s
+                 JOIN accounts a ON s.account_id = a.id
+                 JOIN currencies c ON a.currency_id = c.id
+                 JOIN categories cat ON s.category_id = cat.id
+                 JOIN users u ON s.reporter_id = u.id
+                 ORDER BY s.id DESC
+                 LIMIT ?1",
+            )
+            .unwrap();
+        stmt.query_map([limit], |row| {
+            Ok(RecentSpending {
+                id: row.get(0)?,
+                amount: row.get(1)?,
+                currency_code: row.get(2)?,
+                category_name: row.get(3)?,
+                reporter_name: row.get(4)?,
+                notes: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
     pub fn get_spending_created_at(&self, id: i64) -> Option<String> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
@@ -320,6 +350,37 @@ mod tests {
             .map(|c| c.currency_code)
             .collect();
         assert_eq!(codes, vec!["EUR", "USD", "BYN"]);
+    }
+
+    #[test]
+    fn test_get_recent_spendings_newest_first_with_join() {
+        let db = Db::open_in_memory().unwrap();
+        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let cats = db.get_all_categories();
+        let accounts = db.get_all_accounts();
+
+        db.insert_spending(accounts[0].id, 1.0, cats[0].id, user.id, Some("first"))
+            .unwrap();
+        db.insert_spending(accounts[0].id, 2.0, cats[1].id, user.id, None)
+            .unwrap();
+        db.insert_spending(accounts[0].id, 3.0, cats[0].id, user.id, Some("third"))
+            .unwrap();
+
+        let recent = db.get_recent_spendings(2);
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].amount, 3.0);
+        assert_eq!(recent[0].notes.as_deref(), Some("third"));
+        assert_eq!(recent[0].reporter_name, "Alex");
+        assert_eq!(recent[0].currency_code, "EUR");
+        assert_eq!(recent[0].category_name, cats[0].name);
+        assert_eq!(recent[1].amount, 2.0);
+        assert!(recent[1].notes.is_none());
+    }
+
+    #[test]
+    fn test_get_recent_spendings_empty() {
+        let db = Db::open_in_memory().unwrap();
+        assert!(db.get_recent_spendings(25).is_empty());
     }
 
     #[test]

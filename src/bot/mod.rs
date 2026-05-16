@@ -17,6 +17,7 @@ pub async fn run(db: Db, drafts: DraftStore) {
     log::info!("Starting spending tracker bot...");
 
     let commands = vec![
+        BotCommand::new("recent", "🧾 Последние транзакции"),
         BotCommand::new("accounts", "💼 Счета"),
         BotCommand::new("categories", "📋 Категории"),
         BotCommand::new("currencies", "💱 Валюты"),

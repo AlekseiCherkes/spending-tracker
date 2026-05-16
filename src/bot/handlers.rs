@@ -3,7 +3,7 @@ use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode};
 
-use crate::dal::{Account, Category, Currency, Db, User};
+use crate::dal::{Account, Category, Currency, Db, RecentSpending, User};
 use crate::domain::{DraftKey, DraftStore, EditState, SpendingDraft};
 
 use super::keyboards;
@@ -15,6 +15,7 @@ enum Command {
     Currencies,
     Users,
     DefaultAccount,
+    Recent,
 }
 
 fn parse_command(text: &str) -> Option<Command> {
@@ -26,8 +27,40 @@ fn parse_command(text: &str) -> Option<Command> {
         "/currencies" => Some(Command::Currencies),
         "/users" => Some(Command::Users),
         "/default_account" => Some(Command::DefaultAccount),
+        "/recent" => Some(Command::Recent),
         _ => None,
     }
+}
+
+const RECENT_LIMIT: i64 = 25;
+
+fn format_short_datetime(iso: &str) -> String {
+    let (date_part, time_part) = iso.split_once('T').unwrap_or((iso, ""));
+    let hm: String = time_part.split(':').take(2).collect::<Vec<_>>().join(":");
+    if hm.is_empty() {
+        date_part.to_string()
+    } else {
+        format!("{} {}", date_part, hm)
+    }
+}
+
+fn format_recent_spendings(items: &[RecentSpending]) -> String {
+    if items.is_empty() {
+        return "🧾 Транзакций пока нет".to_string();
+    }
+    let mut out = String::from("🧾 Последние транзакции\n\n");
+    for s in items {
+        let when = format_short_datetime(&s.created_at);
+        let cat = keyboards::format_category(&s.category_name);
+        out.push_str(&format!(
+            "{} — {:.2} {} — {} — {}\n",
+            when, s.amount, s.currency_code, cat, s.reporter_name
+        ));
+        if let Some(note) = s.notes.as_deref().filter(|n| !n.is_empty()) {
+            out.push_str(&format!("  📝 {}\n", note));
+        }
+    }
+    out.trim_end().to_string()
 }
 
 fn format_users(users: &[User]) -> String {
@@ -268,6 +301,9 @@ pub async fn handle_message(
                     Command::Categories => format_categories(&db.get_all_categories()),
                     Command::Currencies => format_currencies(&db.get_all_currencies()),
                     Command::Users => format_users(&db.get_all_users()),
+                    Command::Recent => {
+                        format_recent_spendings(&db.get_recent_spendings(RECENT_LIMIT))
+                    }
                     Command::DefaultAccount => unreachable!(),
                 };
                 bot.send_message(msg.chat.id, response).await?;
@@ -590,6 +626,7 @@ mod tests {
             parse_command("/default_account"),
             Some(Command::DefaultAccount)
         );
+        assert_eq!(parse_command("/recent"), Some(Command::Recent));
     }
 
     #[test]
@@ -729,6 +766,59 @@ mod tests {
         let alex_idx = out.find("Alex").unwrap();
         let hanna_idx = out.find("Hanna").unwrap();
         assert!(alex_idx < hanna_idx);
+    }
+
+    #[test]
+    fn test_format_short_datetime_iso() {
+        assert_eq!(
+            format_short_datetime("2026-05-16T14:30:25"),
+            "2026-05-16 14:30"
+        );
+    }
+
+    #[test]
+    fn test_format_short_datetime_no_time() {
+        assert_eq!(format_short_datetime("2026-05-16"), "2026-05-16");
+    }
+
+    #[test]
+    fn test_format_recent_spendings_empty() {
+        assert_eq!(format_recent_spendings(&[]), "🧾 Транзакций пока нет");
+    }
+
+    #[test]
+    fn test_format_recent_spendings_with_and_without_notes() {
+        let items = vec![
+            RecentSpending {
+                id: 2,
+                amount: 15.5,
+                currency_code: "EUR".into(),
+                category_name: "Продукты и хозтовары".into(),
+                reporter_name: "Alex".into(),
+                notes: Some("молоко".into()),
+                created_at: "2026-05-16T14:30:25".into(),
+            },
+            RecentSpending {
+                id: 1,
+                amount: 4.0,
+                currency_code: "EUR".into(),
+                category_name: "Кофе и вкусняшки".into(),
+                reporter_name: "Hanna".into(),
+                notes: None,
+                created_at: "2026-05-15T09:10:00".into(),
+            },
+        ];
+        let out = format_recent_spendings(&items);
+        assert!(out.starts_with("🧾 Последние транзакции"));
+        assert!(out.contains("2026-05-16 14:30 — 15.50 EUR — 🛒 Продукты и хозтовары — Alex"));
+        assert!(out.contains("  📝 молоко"));
+        assert!(out.contains("2026-05-15 09:10 — 4.00 EUR — ☕ Кофе и вкусняшки — Hanna"));
+        // Order is preserved (newest first as passed in).
+        let alex_idx = out.find("Alex").unwrap();
+        let hanna_idx = out.find("Hanna").unwrap();
+        assert!(alex_idx < hanna_idx);
+        // No stray note line for the second entry.
+        assert_eq!(out.matches("📝").count(), 1);
     }
 
     #[test]
