@@ -674,8 +674,9 @@ pub async fn handle_callback(
         CallbackAction::EditAccount => {
             drafts.update_state(key, EditState::ChoosingAccount);
             let accounts = db.get_all_accounts();
+            let users = db.get_all_users();
             bot.edit_message_text(chat_id, msg_id, "Выберите счёт:")
-                .reply_markup(keyboards::account_keyboard(&accounts))
+                .reply_markup(keyboards::account_keyboard(&accounts, &users))
                 .await?;
         }
         CallbackAction::EditNote => {

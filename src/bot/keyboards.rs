@@ -1,6 +1,6 @@
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 
-use crate::dal::{Account, Category, RecentSpending};
+use crate::dal::{Account, Category, RecentSpending, User};
 
 pub fn category_emoji(name: &str) -> &'static str {
     match name {
@@ -111,12 +111,20 @@ pub fn category_keyboard(categories: &[Category]) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(rows)
 }
 
-pub fn account_keyboard(accounts: &[Account]) -> InlineKeyboardMarkup {
+pub fn account_keyboard(accounts: &[Account], users: &[User]) -> InlineKeyboardMarkup {
     let rows: Vec<Vec<InlineKeyboardButton>> = accounts
         .iter()
         .map(|a| {
+            let owner = a
+                .owner_id
+                .and_then(|id| users.iter().find(|u| u.id == id))
+                .map(|u| u.name.as_str());
+            let label = match owner {
+                Some(name) => format!("{} — {}", a.name, name),
+                None => a.name.clone(),
+            };
             vec![InlineKeyboardButton::callback(
-                &a.name,
+                label,
                 format!("acc:{}", a.id),
             )]
         })
