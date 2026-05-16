@@ -4,6 +4,7 @@ mod keyboards;
 use std::sync::Arc;
 
 use teloxide::prelude::*;
+use teloxide::types::BotCommand;
 
 use crate::dal::Db;
 use crate::domain::DraftStore;
@@ -14,6 +15,16 @@ pub async fn run(db: Db, drafts: DraftStore) {
     let drafts = Arc::new(drafts);
 
     log::info!("Starting spending tracker bot...");
+
+    let commands = vec![
+        BotCommand::new("accounts", "💼 Счета"),
+        BotCommand::new("categories", "📋 Категории"),
+        BotCommand::new("currencies", "💱 Валюты"),
+        BotCommand::new("users", "👥 Пользователи"),
+    ];
+    if let Err(e) = bot.set_my_commands(commands).await {
+        log::warn!("Failed to set bot commands: {}", e);
+    }
 
     let handler = dptree::entry()
         .branch(Update::filter_message().endpoint(handlers::handle_message))
