@@ -80,3 +80,24 @@ pub fn account_keyboard(accounts: &[Account]) -> InlineKeyboardMarkup {
         .collect();
     InlineKeyboardMarkup::new(rows)
 }
+
+pub fn default_account_keyboard(
+    accounts: &[Account],
+    current_default: Option<i64>,
+) -> InlineKeyboardMarkup {
+    let rows: Vec<Vec<InlineKeyboardButton>> = accounts
+        .iter()
+        .map(|a| {
+            let label = if Some(a.id) == current_default {
+                format!("⭐ {}", a.name)
+            } else {
+                a.name.clone()
+            };
+            vec![InlineKeyboardButton::callback(
+                label,
+                format!("setdef:{}", a.id),
+            )]
+        })
+        .collect();
+    InlineKeyboardMarkup::new(rows)
+}

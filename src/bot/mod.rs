@@ -21,6 +21,7 @@ pub async fn run(db: Db, drafts: DraftStore) {
         BotCommand::new("categories", "📋 Категории"),
         BotCommand::new("currencies", "💱 Валюты"),
         BotCommand::new("users", "👥 Пользователи"),
+        BotCommand::new("default_account", "⭐ Сменить счёт по умолчанию"),
     ];
     if let Err(e) = bot.set_my_commands(commands).await {
         log::warn!("Failed to set bot commands: {}", e);

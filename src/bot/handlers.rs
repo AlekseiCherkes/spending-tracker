@@ -14,6 +14,7 @@ enum Command {
     Categories,
     Currencies,
     Users,
+    DefaultAccount,
 }
 
 fn parse_command(text: &str) -> Option<Command> {
@@ -24,6 +25,7 @@ fn parse_command(text: &str) -> Option<Command> {
         "/categories" => Some(Command::Categories),
         "/currencies" => Some(Command::Currencies),
         "/users" => Some(Command::Users),
+        "/default_account" => Some(Command::DefaultAccount),
         _ => None,
     }
 }
@@ -150,6 +152,7 @@ enum CallbackAction {
     Cancel,
     SelectCategory(i64),
     SelectAccount(i64),
+    SetDefaultAccount(i64),
     Unknown,
 }
 
@@ -167,6 +170,10 @@ fn classify_callback(data: &str) -> CallbackAction {
         _ if data.starts_with("acc:") => data[4..]
             .parse()
             .map(CallbackAction::SelectAccount)
+            .unwrap_or(CallbackAction::Unknown),
+        _ if data.starts_with("setdef:") => data[7..]
+            .parse()
+            .map(CallbackAction::SetDefaultAccount)
             .unwrap_or(CallbackAction::Unknown),
         _ => CallbackAction::Unknown,
     }
@@ -229,18 +236,44 @@ pub async fn handle_message(
     };
 
     if let Some(cmd) = parse_command(&text) {
-        let response = match cmd {
-            Command::Accounts => format_accounts(
-                &db.get_all_accounts(),
-                &db.get_all_users(),
-                &db.get_all_currencies(),
-            ),
-            Command::Categories => format_categories(&db.get_all_categories()),
-            Command::Currencies => format_currencies(&db.get_all_currencies()),
-            Command::Users => format_users(&db.get_all_users()),
-        };
-        bot.send_message(msg.chat.id, response).await?;
-        return Ok(());
+        match cmd {
+            Command::DefaultAccount => {
+                let accounts = db.get_all_accounts();
+                let prompt = match user.default_account_id {
+                    Some(id) => {
+                        let current = accounts
+                            .iter()
+                            .find(|a| a.id == id)
+                            .map(|a| a.name.as_str())
+                            .unwrap_or("?");
+                        format!("Текущий счёт по умолчанию: {}\n\nВыберите новый:", current)
+                    }
+                    None => "Счёт по умолчанию не выбран.\n\nВыберите счёт:".to_string(),
+                };
+                bot.send_message(msg.chat.id, prompt)
+                    .reply_markup(keyboards::default_account_keyboard(
+                        &accounts,
+                        user.default_account_id,
+                    ))
+                    .await?;
+                return Ok(());
+            }
+            other => {
+                let response = match other {
+                    Command::Accounts => format_accounts(
+                        &db.get_all_accounts(),
+                        &db.get_all_users(),
+                        &db.get_all_currencies(),
+                    ),
+                    Command::Categories => format_categories(&db.get_all_categories()),
+                    Command::Currencies => format_currencies(&db.get_all_currencies()),
+                    Command::Users => format_users(&db.get_all_users()),
+                    Command::DefaultAccount => unreachable!(),
+                };
+                bot.send_message(msg.chat.id, response).await?;
+                return Ok(());
+            }
+        }
     }
 
     let note_key = drafts.find_by_state(telegram_id, EditState::EnteringNote);
@@ -333,7 +366,21 @@ pub async fn handle_callback(
     };
 
     // Whitelist check
-    if db.get_user_by_telegram_id(telegram_id).is_none() {
+    let user = match db.get_user_by_telegram_id(telegram_id) {
+        Some(u) => u,
+        None => return Ok(()),
+    };
+
+    let action = classify_callback(data);
+
+    if let CallbackAction::SetDefaultAccount(acc_id) = action {
+        db.update_user_default_account(user.id, acc_id)?;
+        let name = db
+            .get_account_by_id(acc_id)
+            .map(|a| a.name)
+            .unwrap_or_else(|| "?".to_string());
+        bot.edit_message_text(chat_id, msg_id, format!("✅ Счёт по умолчанию: {}", name))
+            .await?;
         return Ok(());
     }
 
@@ -345,7 +392,7 @@ pub async fn handle_callback(
         return Ok(());
     }
 
-    match classify_callback(data) {
+    match action {
         CallbackAction::EditCategory => {
             drafts.update_state(key, EditState::ChoosingCategory);
             let categories = db.get_all_categories();
@@ -423,6 +470,7 @@ pub async fn handle_callback(
                 ))
                 .await?;
         }
+        CallbackAction::SetDefaultAccount(_) => unreachable!(),
         CallbackAction::Unknown => {}
     }
 
@@ -512,6 +560,15 @@ mod tests {
     }
 
     #[test]
+    fn test_callback_set_default_account() {
+        assert_eq!(
+            classify_callback("setdef:7"),
+            CallbackAction::SetDefaultAccount(7)
+        );
+        assert_eq!(classify_callback("setdef:abc"), CallbackAction::Unknown);
+    }
+
+    #[test]
     fn test_callback_invalid_id() {
         assert_eq!(classify_callback("cat:abc"), CallbackAction::Unknown);
     }
@@ -529,6 +586,10 @@ mod tests {
         assert_eq!(parse_command("/categories"), Some(Command::Categories));
         assert_eq!(parse_command("/currencies"), Some(Command::Currencies));
         assert_eq!(parse_command("/users"), Some(Command::Users));
+        assert_eq!(
+            parse_command("/default_account"),
+            Some(Command::DefaultAccount)
+        );
     }
 
     #[test]
