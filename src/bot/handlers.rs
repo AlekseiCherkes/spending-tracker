@@ -3,251 +3,18 @@ use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::{InputFile, MessageId, ParseMode};
 
-use crate::dal::{Account, Category, Currency, Db, RecentSpending, User};
+use crate::dal::Db;
 use crate::domain::{DraftKey, DraftStore, EditState, SpendingDraft};
 
+use super::commands::{parse_command, Command};
+use super::export::{build_csv, export_month_options};
+use super::format::{
+    format_accounts, format_categories, format_currencies, format_month_label,
+    format_recent_spendings, format_users, parse_year_month,
+};
 use super::keyboards;
 
-#[derive(Debug, PartialEq)]
-enum Command {
-    Accounts,
-    Categories,
-    Currencies,
-    Users,
-    DefaultAccount,
-    Recent,
-    Export,
-}
-
-fn parse_command(text: &str) -> Option<Command> {
-    let first = text.split_whitespace().next()?;
-    let name = first.split('@').next()?;
-    match name {
-        "/accounts" => Some(Command::Accounts),
-        "/categories" => Some(Command::Categories),
-        "/currencies" => Some(Command::Currencies),
-        "/users" => Some(Command::Users),
-        "/default_account" => Some(Command::DefaultAccount),
-        "/recent" => Some(Command::Recent),
-        "/export" => Some(Command::Export),
-        _ => None,
-    }
-}
-
 const RECENT_LIMIT: i64 = 25;
-
-const EXPORT_MONTHS: usize = 3;
-
-fn prev_month(year: i32, month: u32) -> (i32, u32) {
-    if month == 1 {
-        (year - 1, 12)
-    } else {
-        (year, month - 1)
-    }
-}
-
-fn russian_month_name(month: u32) -> &'static str {
-    match month {
-        1 => "Январь",
-        2 => "Февраль",
-        3 => "Март",
-        4 => "Апрель",
-        5 => "Май",
-        6 => "Июнь",
-        7 => "Июль",
-        8 => "Август",
-        9 => "Сентябрь",
-        10 => "Октябрь",
-        11 => "Ноябрь",
-        12 => "Декабрь",
-        _ => "",
-    }
-}
-
-fn parse_year_month(year_month: &str) -> Option<(i32, u32)> {
-    let (y, m) = year_month.split_once('-')?;
-    let year: i32 = y.parse().ok()?;
-    let month: u32 = m.parse().ok().filter(|m| (1..=12).contains(m))?;
-    Some((year, month))
-}
-
-fn format_month_label(year_month: &str, is_current: bool) -> String {
-    match parse_year_month(year_month) {
-        Some((year, month)) => {
-            let name = russian_month_name(month);
-            if is_current {
-                format!("{} {} (текущий)", name, year)
-            } else {
-                format!("{} {}", name, year)
-            }
-        }
-        None => year_month.to_string(),
-    }
-}
-
-/// Returns up to `EXPORT_MONTHS` year-months ending in `current_ym`, newest first.
-/// Each entry: (year_month string, is_current).
-fn export_month_options(current_ym: &str) -> Vec<(String, bool)> {
-    let Some((mut year, mut month)) = parse_year_month(current_ym) else {
-        return vec![];
-    };
-    let mut out = Vec::with_capacity(EXPORT_MONTHS);
-    out.push((format!("{:04}-{:02}", year, month), true));
-    for _ in 1..EXPORT_MONTHS {
-        let (y, m) = prev_month(year, month);
-        year = y;
-        month = m;
-        out.push((format!("{:04}-{:02}", year, month), false));
-    }
-    out
-}
-
-fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
-        format!("\"{}\"", s.replace('"', "\"\""))
-    } else {
-        s.to_string()
-    }
-}
-
-fn build_csv(items: &[RecentSpending]) -> String {
-    let mut out = String::from("Timestamp,Amount,Currency,Category,Account,IBAN,Reporter,Notes\n");
-    for s in items {
-        let notes = s.notes.as_deref().unwrap_or("");
-        let iban = s.account_iban.as_deref().unwrap_or("");
-        out.push_str(&format!(
-            "{},{:.2},{},{},{},{},{},{}\n",
-            csv_escape(&s.created_at),
-            s.amount,
-            csv_escape(&s.currency_code),
-            csv_escape(&s.category_name),
-            csv_escape(&s.account_name),
-            csv_escape(iban),
-            csv_escape(&s.reporter_name),
-            csv_escape(notes),
-        ));
-    }
-    out
-}
-
-fn format_short_datetime(iso: &str) -> String {
-    let (date_part, time_part) = iso.split_once('T').unwrap_or((iso, ""));
-    let hm: String = time_part.split(':').take(2).collect::<Vec<_>>().join(":");
-    if hm.is_empty() {
-        date_part.to_string()
-    } else {
-        format!("{} {}", date_part, hm)
-    }
-}
-
-fn format_recent_spendings(items: &[RecentSpending]) -> String {
-    if items.is_empty() {
-        return "🧾 Транзакций пока нет".to_string();
-    }
-    let mut out = String::from("🧾 Последние транзакции (нажмите номер, чтобы изменить)\n\n");
-    for (i, s) in items.iter().enumerate() {
-        let when = format_short_datetime(&s.created_at);
-        let cat = keyboards::format_category(&s.category_name);
-        out.push_str(&format!(
-            "{}. {} — {:.2} {} — {} — {}\n",
-            i + 1,
-            when,
-            s.amount,
-            s.currency_code,
-            cat,
-            s.reporter_name
-        ));
-        if let Some(note) = s.notes.as_deref().filter(|n| !n.is_empty()) {
-            out.push_str(&format!("   📝 {}\n", note));
-        }
-    }
-    out.trim_end().to_string()
-}
-
-fn format_users(users: &[User]) -> String {
-    let mut out = String::from("👥 Пользователи\n\n");
-    for u in users {
-        if u.is_admin {
-            out.push_str(&format!("• {} 👑 admin\n", u.name));
-        } else {
-            out.push_str(&format!("• {}\n", u.name));
-        }
-    }
-    out.trim_end().to_string()
-}
-
-fn format_currencies(currencies: &[Currency]) -> String {
-    let mut out = String::from("💱 Валюты\n\n");
-    for c in currencies {
-        out.push_str(&format!("• {}\n", c.currency_code));
-    }
-    out.trim_end().to_string()
-}
-
-fn format_categories(categories: &[Category]) -> String {
-    let mut out = String::from("📋 Категории\n\n");
-    for (i, c) in categories.iter().enumerate() {
-        out.push_str(&format!(
-            "{}. {}\n",
-            i + 1,
-            keyboards::format_category(&c.name)
-        ));
-    }
-    out.trim_end().to_string()
-}
-
-fn format_accounts(accounts: &[Account], users: &[User], currencies: &[Currency]) -> String {
-    let code_of = |id: i64| -> &str {
-        currencies
-            .iter()
-            .find(|c| c.id == id)
-            .map(|c| c.currency_code.as_str())
-            .unwrap_or("?")
-    };
-
-    let mut out = String::from("💼 Счета\n\n");
-
-    for u in users {
-        let owned: Vec<&Account> = accounts
-            .iter()
-            .filter(|a| a.owner_id == Some(u.id))
-            .collect();
-        if owned.is_empty() {
-            continue;
-        }
-        out.push_str(&format!("👤 {}\n", u.name));
-        for a in owned {
-            let default_mark = if u.default_account_id == Some(a.id) {
-                " ⭐ по умолчанию"
-            } else {
-                ""
-            };
-            out.push_str(&format!(
-                "• {} — {}{}\n",
-                a.name,
-                code_of(a.currency_id),
-                default_mark
-            ));
-            if let Some(iban) = &a.iban {
-                out.push_str(&format!("  IBAN: {}\n", iban));
-            }
-        }
-        out.push('\n');
-    }
-
-    let unassigned: Vec<&Account> = accounts.iter().filter(|a| a.owner_id.is_none()).collect();
-    if !unassigned.is_empty() {
-        out.push_str("❓ Без владельца\n");
-        for a in unassigned {
-            out.push_str(&format!("• {} — {}\n", a.name, code_of(a.currency_id)));
-            if let Some(iban) = &a.iban {
-                out.push_str(&format!("  IBAN: {}\n", iban));
-            }
-        }
-    }
-
-    out.trim_end().to_string()
-}
 
 type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
@@ -381,6 +148,29 @@ fn draft_key(chat_id: ChatId, msg_id: MessageId) -> DraftKey {
     (chat_id.0, msg_id.0)
 }
 
+/// Re-renders the draft summary message in place. Shared by every callback / message
+/// branch that mutates the draft and needs the UI to reflect the new state.
+async fn rerender_draft_summary(
+    bot: &Bot,
+    db: &Db,
+    chat_id: ChatId,
+    msg_id: MessageId,
+    draft: &SpendingDraft,
+) -> HandlerResult {
+    let d = build_draft_display(draft, db);
+    bot.edit_message_text(chat_id, msg_id, &d.summary_text)
+        .parse_mode(ParseMode::Html)
+        .reply_markup(keyboards::summary_keyboard(
+            &d.amount_label,
+            &d.category_label,
+            &d.account_label,
+            draft.notes.as_deref(),
+            draft.editing_id.is_some(),
+        ))
+        .await?;
+    Ok(())
+}
+
 pub async fn handle_message(
     bot: Bot,
     msg: Message,
@@ -473,35 +263,15 @@ pub async fn handle_message(
         MessageAction::AmountInput(key, new_amount) => {
             drafts.update_amount(key, new_amount);
             let updated = drafts.get(key).unwrap();
-            let d = build_draft_display(&updated, &db);
             let (chat_id, msg_id) = (ChatId(key.0), MessageId(key.1));
-            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
-                .parse_mode(ParseMode::Html)
-                .reply_markup(keyboards::summary_keyboard(
-                    &d.amount_label,
-                    &d.category_label,
-                    &d.account_label,
-                    updated.notes.as_deref(),
-                    updated.editing_id.is_some(),
-                ))
-                .await?;
+            rerender_draft_summary(&bot, &db, chat_id, msg_id, &updated).await?;
             return Ok(());
         }
         MessageAction::NoteInput(key) => {
             drafts.update_note(key, text);
             let updated = drafts.get(key).unwrap();
-            let d = build_draft_display(&updated, &db);
             let (chat_id, msg_id) = (ChatId(key.0), MessageId(key.1));
-            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
-                .parse_mode(ParseMode::Html)
-                .reply_markup(keyboards::summary_keyboard(
-                    &d.amount_label,
-                    &d.category_label,
-                    &d.account_label,
-                    updated.notes.as_deref(),
-                    updated.editing_id.is_some(),
-                ))
-                .await?;
+            rerender_draft_summary(&bot, &db, chat_id, msg_id, &updated).await?;
             return Ok(());
         }
         MessageAction::ShowHelp => {
@@ -731,32 +501,12 @@ pub async fn handle_callback(
         CallbackAction::SelectCategory(cat_id) => {
             drafts.update_category(key, cat_id);
             let updated = drafts.get(key).unwrap();
-            let d = build_draft_display(&updated, &db);
-            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
-                .parse_mode(ParseMode::Html)
-                .reply_markup(keyboards::summary_keyboard(
-                    &d.amount_label,
-                    &d.category_label,
-                    &d.account_label,
-                    updated.notes.as_deref(),
-                    updated.editing_id.is_some(),
-                ))
-                .await?;
+            rerender_draft_summary(&bot, &db, chat_id, msg_id, &updated).await?;
         }
         CallbackAction::SelectAccount(acc_id) => {
             drafts.update_account(key, acc_id);
             let updated = drafts.get(key).unwrap();
-            let d = build_draft_display(&updated, &db);
-            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
-                .parse_mode(ParseMode::Html)
-                .reply_markup(keyboards::summary_keyboard(
-                    &d.amount_label,
-                    &d.category_label,
-                    &d.account_label,
-                    updated.notes.as_deref(),
-                    updated.editing_id.is_some(),
-                ))
-                .await?;
+            rerender_draft_summary(&bot, &db, chat_id, msg_id, &updated).await?;
         }
         CallbackAction::Delete => {
             drafts.update_state(key, EditState::ConfirmingDelete);
@@ -781,17 +531,7 @@ pub async fn handle_callback(
         CallbackAction::CancelDelete => {
             drafts.update_state(key, EditState::Summary);
             let updated = drafts.get(key).unwrap();
-            let d = build_draft_display(&updated, &db);
-            bot.edit_message_text(chat_id, msg_id, &d.summary_text)
-                .parse_mode(ParseMode::Html)
-                .reply_markup(keyboards::summary_keyboard(
-                    &d.amount_label,
-                    &d.category_label,
-                    &d.account_label,
-                    updated.notes.as_deref(),
-                    updated.editing_id.is_some(),
-                ))
-                .await?;
+            rerender_draft_summary(&bot, &db, chat_id, msg_id, &updated).await?;
         }
         CallbackAction::SetDefaultAccount(_) => unreachable!(),
         CallbackAction::EditSpending(_) => unreachable!(),
@@ -971,368 +711,5 @@ mod tests {
     #[test]
     fn test_callback_unknown() {
         assert_eq!(classify_callback("something"), CallbackAction::Unknown);
-    }
-
-    // --- parse_command ---
-
-    #[test]
-    fn test_parse_known_commands() {
-        assert_eq!(parse_command("/accounts"), Some(Command::Accounts));
-        assert_eq!(parse_command("/categories"), Some(Command::Categories));
-        assert_eq!(parse_command("/currencies"), Some(Command::Currencies));
-        assert_eq!(parse_command("/users"), Some(Command::Users));
-        assert_eq!(
-            parse_command("/default_account"),
-            Some(Command::DefaultAccount)
-        );
-        assert_eq!(parse_command("/recent"), Some(Command::Recent));
-        assert_eq!(parse_command("/export"), Some(Command::Export));
-    }
-
-    #[test]
-    fn test_parse_command_with_bot_suffix() {
-        assert_eq!(parse_command("/users@MyBot"), Some(Command::Users));
-    }
-
-    #[test]
-    fn test_parse_command_ignores_trailing_args() {
-        assert_eq!(parse_command("/accounts please"), Some(Command::Accounts));
-    }
-
-    #[test]
-    fn test_parse_command_unknown() {
-        assert_eq!(parse_command("/wat"), None);
-        assert_eq!(parse_command("hello"), None);
-        assert_eq!(parse_command(""), None);
-    }
-
-    // --- formatters ---
-
-    #[test]
-    fn test_format_users_marks_admin() {
-        let users = vec![
-            User {
-                id: 1,
-                name: "Alice".into(),
-                telegram_id: 1,
-                is_admin: true,
-                default_account_id: None,
-            },
-            User {
-                id: 2,
-                name: "Bob".into(),
-                telegram_id: 2,
-                is_admin: false,
-                default_account_id: None,
-            },
-        ];
-        let out = format_users(&users);
-        assert!(out.contains("Alice 👑 admin"));
-        assert!(out.contains("• Bob"));
-        assert!(!out.contains("Bob 👑"));
-    }
-
-    #[test]
-    fn test_format_currencies_lists_codes() {
-        let currencies = vec![
-            Currency {
-                id: 1,
-                currency_code: "EUR".into(),
-            },
-            Currency {
-                id: 2,
-                currency_code: "USD".into(),
-            },
-        ];
-        let out = format_currencies(&currencies);
-        assert!(out.contains("• EUR"));
-        assert!(out.contains("• USD"));
-    }
-
-    #[test]
-    fn test_format_categories_numbered_in_order() {
-        let categories = vec![
-            Category {
-                id: 1,
-                name: "Продукты и хозтовары".into(),
-                sort_order: 0,
-            },
-            Category {
-                id: 2,
-                name: "Другое".into(),
-                sort_order: 1,
-            },
-        ];
-        let out = format_categories(&categories);
-        let p_idx = out.find("Продукты").unwrap();
-        let o_idx = out.find("Другое").unwrap();
-        assert!(p_idx < o_idx);
-        assert!(out.contains("1. 🛒 Продукты и хозтовары"));
-        assert!(out.contains("2. 📦 Другое"));
-    }
-
-    #[test]
-    fn test_format_accounts_groups_and_marks_default() {
-        let users = vec![
-            User {
-                id: 1,
-                name: "Alice".into(),
-                telegram_id: 1,
-                is_admin: true,
-                default_account_id: Some(10),
-            },
-            User {
-                id: 2,
-                name: "Bob".into(),
-                telegram_id: 2,
-                is_admin: false,
-                default_account_id: None,
-            },
-        ];
-        let currencies = vec![Currency {
-            id: 1,
-            currency_code: "EUR".into(),
-        }];
-        let accounts = vec![
-            Account {
-                id: 10,
-                name: "Account A".into(),
-                currency_id: 1,
-                owner_id: Some(1),
-                iban: Some("LT00".into()),
-            },
-            Account {
-                id: 11,
-                name: "Account B".into(),
-                currency_id: 1,
-                owner_id: Some(1),
-                iban: None,
-            },
-            Account {
-                id: 12,
-                name: "Account C".into(),
-                currency_id: 1,
-                owner_id: Some(2),
-                iban: None,
-            },
-        ];
-        let out = format_accounts(&accounts, &users, &currencies);
-        assert!(out.contains("👤 Alice"));
-        assert!(out.contains("👤 Bob"));
-        assert!(out.contains("Account A — EUR ⭐ по умолчанию"));
-        assert!(out.contains("Account B — EUR\n"));
-        assert!(!out.contains("Account B — EUR ⭐"));
-        assert!(out.contains("IBAN: LT00"));
-        let alice_idx = out.find("Alice").unwrap();
-        let bob_idx = out.find("Bob").unwrap();
-        assert!(alice_idx < bob_idx);
-    }
-
-    #[test]
-    fn test_format_short_datetime_iso() {
-        assert_eq!(
-            format_short_datetime("2026-05-16T14:30:25"),
-            "2026-05-16 14:30"
-        );
-    }
-
-    #[test]
-    fn test_format_short_datetime_no_time() {
-        assert_eq!(format_short_datetime("2026-05-16"), "2026-05-16");
-    }
-
-    #[test]
-    fn test_format_recent_spendings_empty() {
-        assert_eq!(format_recent_spendings(&[]), "🧾 Транзакций пока нет");
-    }
-
-    // --- export helpers ---
-
-    #[test]
-    fn test_prev_month_basic() {
-        assert_eq!(prev_month(2026, 5), (2026, 4));
-        assert_eq!(prev_month(2026, 2), (2026, 1));
-    }
-
-    #[test]
-    fn test_prev_month_wraps_year() {
-        assert_eq!(prev_month(2026, 1), (2025, 12));
-    }
-
-    #[test]
-    fn test_parse_year_month_valid() {
-        assert_eq!(parse_year_month("2026-05"), Some((2026, 5)));
-        assert_eq!(parse_year_month("2026-12"), Some((2026, 12)));
-    }
-
-    #[test]
-    fn test_parse_year_month_invalid() {
-        assert!(parse_year_month("2026-00").is_none());
-        assert!(parse_year_month("2026-13").is_none());
-        assert!(parse_year_month("2026").is_none());
-        assert!(parse_year_month("abc-de").is_none());
-    }
-
-    #[test]
-    fn test_format_month_label() {
-        assert_eq!(format_month_label("2026-05", true), "Май 2026 (текущий)");
-        assert_eq!(format_month_label("2026-04", false), "Апрель 2026");
-        assert_eq!(format_month_label("2025-12", false), "Декабрь 2025");
-        // Falls back to raw input on parse failure.
-        assert_eq!(format_month_label("bogus", false), "bogus");
-    }
-
-    #[test]
-    fn test_export_month_options_three_months_back() {
-        let opts = export_month_options("2026-05");
-        assert_eq!(opts.len(), 3);
-        assert_eq!(opts[0], ("2026-05".to_string(), true));
-        assert_eq!(opts[1], ("2026-04".to_string(), false));
-        assert_eq!(opts[2], ("2026-03".to_string(), false));
-    }
-
-    #[test]
-    fn test_export_month_options_crosses_year_boundary() {
-        let opts = export_month_options("2026-01");
-        assert_eq!(
-            opts,
-            vec![
-                ("2026-01".to_string(), true),
-                ("2025-12".to_string(), false),
-                ("2025-11".to_string(), false),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_csv_escape_plain() {
-        assert_eq!(csv_escape("hello"), "hello");
-    }
-
-    #[test]
-    fn test_csv_escape_with_comma() {
-        assert_eq!(csv_escape("a, b"), "\"a, b\"");
-    }
-
-    #[test]
-    fn test_csv_escape_with_quote() {
-        assert_eq!(csv_escape("she said \"hi\""), "\"she said \"\"hi\"\"\"");
-    }
-
-    #[test]
-    fn test_csv_escape_with_newline() {
-        assert_eq!(csv_escape("line1\nline2"), "\"line1\nline2\"");
-    }
-
-    #[test]
-    fn test_build_csv_header_and_rows() {
-        let items = vec![
-            RecentSpending {
-                id: 1,
-                amount: 15.5,
-                currency_code: "EUR".into(),
-                account_name: "Account A".into(),
-                account_iban: Some("LT00 0000 0001".into()),
-                category_name: "Продукты и хозтовары".into(),
-                reporter_name: "Alice".into(),
-                notes: Some("молоко, хлеб".into()),
-                created_at: "2026-05-01T08:00:00".into(),
-            },
-            RecentSpending {
-                id: 2,
-                amount: 4.0,
-                currency_code: "USD".into(),
-                account_name: "Account C".into(),
-                account_iban: None,
-                category_name: "Кофе и вкусняшки".into(),
-                reporter_name: "Bob".into(),
-                notes: None,
-                created_at: "2026-05-02T09:10:00".into(),
-            },
-        ];
-        let csv = build_csv(&items);
-        let mut lines = csv.lines();
-        assert_eq!(
-            lines.next(),
-            Some("Timestamp,Amount,Currency,Category,Account,IBAN,Reporter,Notes")
-        );
-        assert_eq!(
-            lines.next(),
-            Some(
-                "2026-05-01T08:00:00,15.50,EUR,Продукты и хозтовары,Account A,LT00 0000 0001,Alice,\"молоко, хлеб\""
-            )
-        );
-        assert_eq!(
-            lines.next(),
-            Some("2026-05-02T09:10:00,4.00,USD,Кофе и вкусняшки,Account C,,Bob,")
-        );
-        assert_eq!(lines.next(), None);
-    }
-
-    #[test]
-    fn test_build_csv_empty_only_header() {
-        let csv = build_csv(&[]);
-        assert_eq!(
-            csv,
-            "Timestamp,Amount,Currency,Category,Account,IBAN,Reporter,Notes\n"
-        );
-    }
-
-    #[test]
-    fn test_format_recent_spendings_with_and_without_notes() {
-        let items = vec![
-            RecentSpending {
-                id: 2,
-                amount: 15.5,
-                currency_code: "EUR".into(),
-                account_name: "Account A".into(),
-                account_iban: None,
-                category_name: "Продукты и хозтовары".into(),
-                reporter_name: "Alice".into(),
-                notes: Some("молоко".into()),
-                created_at: "2026-05-16T14:30:25".into(),
-            },
-            RecentSpending {
-                id: 1,
-                amount: 4.0,
-                currency_code: "EUR".into(),
-                account_name: "Account A".into(),
-                account_iban: None,
-                category_name: "Кофе и вкусняшки".into(),
-                reporter_name: "Bob".into(),
-                notes: None,
-                created_at: "2026-05-15T09:10:00".into(),
-            },
-        ];
-        let out = format_recent_spendings(&items);
-        assert!(out.starts_with("🧾 Последние транзакции"));
-        assert!(out.contains("1. 2026-05-16 14:30 — 15.50 EUR — 🛒 Продукты и хозтовары — Alice"));
-        assert!(out.contains("   📝 молоко"));
-        assert!(out.contains("2. 2026-05-15 09:10 — 4.00 EUR — ☕ Кофе и вкусняшки — Bob"));
-        // Order is preserved (newest first as passed in).
-        let alice_idx = out.find("Alice").unwrap();
-        let bob_idx = out.find("Bob").unwrap();
-        assert!(alice_idx < bob_idx);
-        // No stray note line for the second entry.
-        assert_eq!(out.matches("📝").count(), 1);
-    }
-
-    #[test]
-    fn test_format_accounts_shows_unassigned() {
-        let users = vec![];
-        let currencies = vec![Currency {
-            id: 1,
-            currency_code: "EUR".into(),
-        }];
-        let accounts = vec![Account {
-            id: 1,
-            name: "Orphan".into(),
-            currency_id: 1,
-            owner_id: None,
-            iban: None,
-        }];
-        let out = format_accounts(&accounts, &users, &currencies);
-        assert!(out.contains("❓ Без владельца"));
-        assert!(out.contains("Orphan — EUR"));
     }
 }
