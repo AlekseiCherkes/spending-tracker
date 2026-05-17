@@ -51,8 +51,11 @@ impl Db {
 
         if version < 1 {
             conn.execute_batch(queries::SCHEMA_V1).unwrap();
-            conn.execute("INSERT INTO schema_version (version) VALUES (?1)", [1i64])
-                .unwrap();
+            conn.execute(
+                "INSERT OR REPLACE INTO schema_version (rowid, version) VALUES (1, ?1)",
+                [1i64],
+            )
+            .unwrap();
             log::info!("Migrated to schema version 1");
         }
     }
