@@ -195,6 +195,17 @@ pub async fn handle_message(
 
     if let Some(cmd) = parse_command(&text) {
         match cmd {
+            Command::Start => {
+                bot.send_message(
+                    msg.chat.id,
+                    format!(
+                        "Привет, {}!\n\nОтправьте сумму (число), чтобы записать расход. Команды доступны в меню.",
+                        user.name
+                    ),
+                )
+                .await?;
+                return Ok(());
+            }
             Command::DefaultAccount => {
                 let accounts = db.get_all_accounts();
                 let prompt = match user.default_account_id {
@@ -247,7 +258,10 @@ pub async fn handle_message(
                     Command::Categories => format_categories(&db.get_all_categories()),
                     Command::Currencies => format_currencies(&db.get_all_currencies()),
                     Command::Users => format_users(&db.get_all_users()),
-                    Command::DefaultAccount | Command::Recent | Command::Export => unreachable!(),
+                    Command::Start
+                    | Command::DefaultAccount
+                    | Command::Recent
+                    | Command::Export => unreachable!(),
                 };
                 bot.send_message(msg.chat.id, response).await?;
                 return Ok(());

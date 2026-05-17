@@ -1,5 +1,6 @@
 #[derive(Debug, PartialEq)]
 pub(super) enum Command {
+    Start,
     Accounts,
     Categories,
     Currencies,
@@ -13,6 +14,7 @@ pub(super) fn parse_command(text: &str) -> Option<Command> {
     let first = text.split_whitespace().next()?;
     let name = first.split('@').next()?;
     match name {
+        "/start" => Some(Command::Start),
         "/accounts" => Some(Command::Accounts),
         "/categories" => Some(Command::Categories),
         "/currencies" => Some(Command::Currencies),
@@ -30,6 +32,7 @@ mod tests {
 
     #[test]
     fn test_parse_known_commands() {
+        assert_eq!(parse_command("/start"), Some(Command::Start));
         assert_eq!(parse_command("/accounts"), Some(Command::Accounts));
         assert_eq!(parse_command("/categories"), Some(Command::Categories));
         assert_eq!(parse_command("/currencies"), Some(Command::Currencies));
