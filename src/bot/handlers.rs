@@ -481,7 +481,8 @@ pub async fn handle_callback(
 
             let d = build_draft_display(&draft, &db);
             let created_at = db
-                .get_spending_created_at(spending_id)
+                .get_spending_by_id(spending_id)
+                .map(|s| s.created_at)
                 .unwrap_or_else(|| "—".to_string());
             let mut text = format!(
                 "{}\n\nСумма: {}\n{}\n{}\nДата: {}",

@@ -36,7 +36,6 @@ pub struct Spending {
     pub category_id: i64,
     pub reporter_id: i64,
     pub notes: Option<String>,
-    #[allow(dead_code)]
     pub created_at: String,
 }
 
