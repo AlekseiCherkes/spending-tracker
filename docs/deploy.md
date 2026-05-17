@@ -37,19 +37,37 @@ Environment=TELOXIDE_TOKEN=your-bot-token-here
 Environment=DATABASE_PATH=/opt/spending-tracker/data/spending_tracker.db
 Environment=RUST_LOG=info
 
-# Only for pre-seeded data
-Environment=ALEX_TELEGRAM_ID=your-telegram-id
-Environment=HANNA_TELEGRAM_ID=other-telegram-id
-
 [Install]
 WantedBy=multi-user.target
 ```
+
+The binary creates an empty schema on first run but does not seed any users,
+accounts, or categories — populate them once by hand (see [Initial data](#initial-data) below).
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable spending-tracker
 sudo systemctl start spending-tracker
 ```
+
+## Initial data
+
+The production database starts empty. Populate it once via `sqlite3` directly
+on the server (stop the service first to avoid writes during the import):
+
+```bash
+sudo systemctl stop spending-tracker
+sudo sqlite3 /opt/spending-tracker/data/spending_tracker.db
+```
+
+Then `INSERT` rows into `currencies`, `users` (with real Telegram IDs),
+`accounts`, and `categories`. Restart the service afterwards:
+
+```bash
+sudo systemctl start spending-tracker
+```
+
+After this, day-to-day data entry happens through the bot.
 
 ## 4. Cron jobs
 

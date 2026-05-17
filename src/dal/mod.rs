@@ -1,5 +1,6 @@
 mod models;
 mod queries;
+#[cfg(test)]
 mod seed;
 
 pub use models::*;
@@ -18,7 +19,6 @@ impl Db {
             conn: Arc::new(Mutex::new(conn)),
         };
         db.run_migrations();
-        db.seed();
         Ok(db)
     }
 
@@ -29,7 +29,10 @@ impl Db {
             conn: Arc::new(Mutex::new(conn)),
         };
         db.run_migrations();
-        db.seed();
+        {
+            let c = db.conn.lock().unwrap();
+            seed::seed_if_empty(&c);
+        }
         Ok(db)
     }
 
@@ -47,11 +50,6 @@ impl Db {
                 .unwrap();
             log::info!("Migrated to schema version 1");
         }
-    }
-
-    fn seed(&self) {
-        let conn = self.conn.lock().unwrap();
-        seed::seed_if_empty(&conn);
     }
 
     pub fn get_user_by_telegram_id(&self, telegram_id: i64) -> Option<User> {
@@ -365,16 +363,16 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         let users = db.get_all_users();
         assert_eq!(users.len(), 2);
-        assert_eq!(users[0].name, "Alex");
+        assert_eq!(users[0].name, "Alice");
         assert!(users[0].is_admin);
-        assert_eq!(users[1].name, "Hanna");
+        assert_eq!(users[1].name, "Bob");
     }
 
     #[test]
     fn test_get_user_by_telegram_id() {
         let db = Db::open_in_memory().unwrap();
-        let user = db.get_user_by_telegram_id(1111111111).unwrap();
-        assert_eq!(user.name, "Alex");
+        let user = db.get_user_by_telegram_id(seed::ALICE_TELEGRAM_ID).unwrap();
+        assert_eq!(user.name, "Alice");
         assert!(db.get_user_by_telegram_id(9999999999).is_none());
     }
 
@@ -397,19 +395,19 @@ mod tests {
     #[test]
     fn test_insert_and_default_account() {
         let db = Db::open_in_memory().unwrap();
-        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let user = db.get_user_by_telegram_id(seed::ALICE_TELEGRAM_ID).unwrap();
         assert!(user.default_account_id.is_some());
 
         let account = db
             .get_account_by_id(user.default_account_id.unwrap())
             .unwrap();
-        assert_eq!(account.name, "Revolut (Joint)");
+        assert_eq!(account.name, "Account A");
     }
 
     #[test]
     fn test_insert_spending() {
         let db = Db::open_in_memory().unwrap();
-        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let user = db.get_user_by_telegram_id(seed::ALICE_TELEGRAM_ID).unwrap();
         let cats = db.get_all_categories();
         let accounts = db.get_all_accounts();
 
@@ -441,7 +439,7 @@ mod tests {
     #[test]
     fn test_get_recent_spendings_newest_first_with_join() {
         let db = Db::open_in_memory().unwrap();
-        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let user = db.get_user_by_telegram_id(seed::ALICE_TELEGRAM_ID).unwrap();
         let cats = db.get_all_categories();
         let accounts = db.get_all_accounts();
 
@@ -456,7 +454,7 @@ mod tests {
         assert_eq!(recent.len(), 2);
         assert_eq!(recent[0].amount, 3.0);
         assert_eq!(recent[0].notes.as_deref(), Some("third"));
-        assert_eq!(recent[0].reporter_name, "Alex");
+        assert_eq!(recent[0].reporter_name, "Alice");
         assert_eq!(recent[0].currency_code, "EUR");
         assert_eq!(recent[0].account_name, accounts[0].name);
         assert_eq!(recent[0].category_name, cats[0].name);
@@ -467,7 +465,7 @@ mod tests {
     #[test]
     fn test_get_spendings_in_month_includes_account_iban() {
         let db = Db::open_in_memory().unwrap();
-        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let user = db.get_user_by_telegram_id(seed::ALICE_TELEGRAM_ID).unwrap();
         let cats = db.get_all_categories();
         let currency_id = db.get_all_currencies()[0].id;
 
@@ -501,7 +499,7 @@ mod tests {
     #[test]
     fn test_get_spendings_in_month_filters_and_orders() {
         let db = Db::open_in_memory().unwrap();
-        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let user = db.get_user_by_telegram_id(seed::ALICE_TELEGRAM_ID).unwrap();
         let cats = db.get_all_categories();
         let accounts = db.get_all_accounts();
 
@@ -560,15 +558,9 @@ mod tests {
     }
 
     #[test]
-    fn test_get_recent_spendings_empty() {
-        let db = Db::open_in_memory().unwrap();
-        assert!(db.get_recent_spendings(25).is_empty());
-    }
-
-    #[test]
     fn test_get_spending_by_id() {
         let db = Db::open_in_memory().unwrap();
-        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let user = db.get_user_by_telegram_id(seed::ALICE_TELEGRAM_ID).unwrap();
         let cats = db.get_all_categories();
         let accounts = db.get_all_accounts();
 
@@ -586,7 +578,7 @@ mod tests {
     #[test]
     fn test_update_spending() {
         let db = Db::open_in_memory().unwrap();
-        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let user = db.get_user_by_telegram_id(seed::ALICE_TELEGRAM_ID).unwrap();
         let cats = db.get_all_categories();
         let accounts = db.get_all_accounts();
 
@@ -607,7 +599,7 @@ mod tests {
     #[test]
     fn test_delete_spending() {
         let db = Db::open_in_memory().unwrap();
-        let user = db.get_user_by_telegram_id(1111111111).unwrap();
+        let user = db.get_user_by_telegram_id(seed::ALICE_TELEGRAM_ID).unwrap();
         let cats = db.get_all_categories();
         let accounts = db.get_all_accounts();
 

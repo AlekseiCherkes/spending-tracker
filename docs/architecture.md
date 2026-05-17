@@ -26,14 +26,14 @@ Data access layer wrapping rusqlite.
 - **`mod.rs`** — `Db` struct (Arc<Mutex<Connection>>), all query methods
 - **`models.rs`** — data structs: User, Account, Category, Currency, Spending
 - **`queries.rs`** — SQL schema DDL
-- **`seed.rs`** — default data seeding (currencies, users, categories, accounts)
+- **`seed.rs`** — `#[cfg(test)]` only: fixture data (Alice/Bob, abstract accounts, sample 2025 spendings) used by `Db::open_in_memory`
 
 ## Data Model
 
-- **currencies** — EUR, USD, BYN
-- **users** — whitelisted Telegram users (Alex admin, Hanna)
+- **currencies** — codes like EUR, USD, BYN
+- **users** — whitelisted Telegram users
 - **accounts** — bank accounts with currency and optional owner
-- **categories** — 20 spending categories with sort order
+- **categories** — spending categories with sort order
 - **spendings** — individual expense records linked to account, category, reporter
 
 ## Key Decisions
@@ -43,5 +43,4 @@ Data access layer wrapping rusqlite.
 - Single SQLite connection behind `Arc<Mutex<>>` — sufficient for low-traffic family bot
 - `REAL` for amounts — no decimal crate needed for personal finance
 - Simple version-based migrations (no external framework)
-- `INSERT OR IGNORE` for idempotent seeding
-- Seed data runs once if users table is empty; telegram IDs from env vars with fallback defaults
+- No preseeding in production: the binary creates the empty schema and the DB is populated once by hand via `sqlite3`. Local development uses a snapshot of the prod DB (`scripts/download-prod-db.sh`). Tests get fixture data from a `#[cfg(test)]`-only `seed.rs` (Alice/Bob, abstract accounts, sample 2025 spendings)

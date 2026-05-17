@@ -1013,23 +1013,23 @@ mod tests {
         let users = vec![
             User {
                 id: 1,
-                name: "Alex".into(),
+                name: "Alice".into(),
                 telegram_id: 1,
                 is_admin: true,
                 default_account_id: None,
             },
             User {
                 id: 2,
-                name: "Hanna".into(),
+                name: "Bob".into(),
                 telegram_id: 2,
                 is_admin: false,
                 default_account_id: None,
             },
         ];
         let out = format_users(&users);
-        assert!(out.contains("Alex 👑 admin"));
-        assert!(out.contains("• Hanna"));
-        assert!(!out.contains("Hanna 👑"));
+        assert!(out.contains("Alice 👑 admin"));
+        assert!(out.contains("• Bob"));
+        assert!(!out.contains("Bob 👑"));
     }
 
     #[test]
@@ -1076,14 +1076,14 @@ mod tests {
         let users = vec![
             User {
                 id: 1,
-                name: "Alex".into(),
+                name: "Alice".into(),
                 telegram_id: 1,
                 is_admin: true,
                 default_account_id: Some(10),
             },
             User {
                 id: 2,
-                name: "Hanna".into(),
+                name: "Bob".into(),
                 telegram_id: 2,
                 is_admin: false,
                 default_account_id: None,
@@ -1096,36 +1096,36 @@ mod tests {
         let accounts = vec![
             Account {
                 id: 10,
-                name: "Revolut".into(),
+                name: "Account A".into(),
                 currency_id: 1,
                 owner_id: Some(1),
                 iban: Some("LT00".into()),
             },
             Account {
                 id: 11,
-                name: "Nordea".into(),
+                name: "Account B".into(),
                 currency_id: 1,
                 owner_id: Some(1),
                 iban: None,
             },
             Account {
                 id: 12,
-                name: "S-pankki".into(),
+                name: "Account C".into(),
                 currency_id: 1,
                 owner_id: Some(2),
                 iban: None,
             },
         ];
         let out = format_accounts(&accounts, &users, &currencies);
-        assert!(out.contains("👤 Alex"));
-        assert!(out.contains("👤 Hanna"));
-        assert!(out.contains("Revolut — EUR ⭐ по умолчанию"));
-        assert!(out.contains("Nordea — EUR\n"));
-        assert!(!out.contains("Nordea — EUR ⭐"));
+        assert!(out.contains("👤 Alice"));
+        assert!(out.contains("👤 Bob"));
+        assert!(out.contains("Account A — EUR ⭐ по умолчанию"));
+        assert!(out.contains("Account B — EUR\n"));
+        assert!(!out.contains("Account B — EUR ⭐"));
         assert!(out.contains("IBAN: LT00"));
-        let alex_idx = out.find("Alex").unwrap();
-        let hanna_idx = out.find("Hanna").unwrap();
-        assert!(alex_idx < hanna_idx);
+        let alice_idx = out.find("Alice").unwrap();
+        let bob_idx = out.find("Bob").unwrap();
+        assert!(alice_idx < bob_idx);
     }
 
     #[test]
@@ -1231,10 +1231,10 @@ mod tests {
                 id: 1,
                 amount: 15.5,
                 currency_code: "EUR".into(),
-                account_name: "Revolut".into(),
+                account_name: "Account A".into(),
                 account_iban: Some("LT00 0000 0001".into()),
                 category_name: "Продукты и хозтовары".into(),
-                reporter_name: "Alex".into(),
+                reporter_name: "Alice".into(),
                 notes: Some("молоко, хлеб".into()),
                 created_at: "2026-05-01T08:00:00".into(),
             },
@@ -1242,10 +1242,10 @@ mod tests {
                 id: 2,
                 amount: 4.0,
                 currency_code: "USD".into(),
-                account_name: "Cash".into(),
+                account_name: "Account C".into(),
                 account_iban: None,
                 category_name: "Кофе и вкусняшки".into(),
-                reporter_name: "Hanna".into(),
+                reporter_name: "Bob".into(),
                 notes: None,
                 created_at: "2026-05-02T09:10:00".into(),
             },
@@ -1259,12 +1259,12 @@ mod tests {
         assert_eq!(
             lines.next(),
             Some(
-                "2026-05-01T08:00:00,15.50,EUR,Продукты и хозтовары,Revolut,LT00 0000 0001,Alex,\"молоко, хлеб\""
+                "2026-05-01T08:00:00,15.50,EUR,Продукты и хозтовары,Account A,LT00 0000 0001,Alice,\"молоко, хлеб\""
             )
         );
         assert_eq!(
             lines.next(),
-            Some("2026-05-02T09:10:00,4.00,USD,Кофе и вкусняшки,Cash,,Hanna,")
+            Some("2026-05-02T09:10:00,4.00,USD,Кофе и вкусняшки,Account C,,Bob,")
         );
         assert_eq!(lines.next(), None);
     }
@@ -1285,10 +1285,10 @@ mod tests {
                 id: 2,
                 amount: 15.5,
                 currency_code: "EUR".into(),
-                account_name: "Revolut".into(),
+                account_name: "Account A".into(),
                 account_iban: None,
                 category_name: "Продукты и хозтовары".into(),
-                reporter_name: "Alex".into(),
+                reporter_name: "Alice".into(),
                 notes: Some("молоко".into()),
                 created_at: "2026-05-16T14:30:25".into(),
             },
@@ -1296,23 +1296,23 @@ mod tests {
                 id: 1,
                 amount: 4.0,
                 currency_code: "EUR".into(),
-                account_name: "Revolut".into(),
+                account_name: "Account A".into(),
                 account_iban: None,
                 category_name: "Кофе и вкусняшки".into(),
-                reporter_name: "Hanna".into(),
+                reporter_name: "Bob".into(),
                 notes: None,
                 created_at: "2026-05-15T09:10:00".into(),
             },
         ];
         let out = format_recent_spendings(&items);
         assert!(out.starts_with("🧾 Последние транзакции"));
-        assert!(out.contains("1. 2026-05-16 14:30 — 15.50 EUR — 🛒 Продукты и хозтовары — Alex"));
+        assert!(out.contains("1. 2026-05-16 14:30 — 15.50 EUR — 🛒 Продукты и хозтовары — Alice"));
         assert!(out.contains("   📝 молоко"));
-        assert!(out.contains("2. 2026-05-15 09:10 — 4.00 EUR — ☕ Кофе и вкусняшки — Hanna"));
+        assert!(out.contains("2. 2026-05-15 09:10 — 4.00 EUR — ☕ Кофе и вкусняшки — Bob"));
         // Order is preserved (newest first as passed in).
-        let alex_idx = out.find("Alex").unwrap();
-        let hanna_idx = out.find("Hanna").unwrap();
-        assert!(alex_idx < hanna_idx);
+        let alice_idx = out.find("Alice").unwrap();
+        let bob_idx = out.find("Bob").unwrap();
+        assert!(alice_idx < bob_idx);
         // No stray note line for the second entry.
         assert_eq!(out.matches("📝").count(), 1);
     }
