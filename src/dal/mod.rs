@@ -11,7 +11,6 @@ pub struct Db {
     conn: Arc<Mutex<Connection>>,
 }
 
-#[allow(dead_code)]
 impl Db {
     pub fn open(path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(path)?;
@@ -23,6 +22,7 @@ impl Db {
         Ok(db)
     }
 
+    #[cfg(test)]
     pub fn open_in_memory() -> Result<Self, rusqlite::Error> {
         let conn = Connection::open_in_memory()?;
         let db = Self {

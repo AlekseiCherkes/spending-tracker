@@ -1,13 +1,12 @@
-#[allow(dead_code)]
 pub struct User {
     pub id: i64,
     pub name: String,
+    #[allow(dead_code)]
     pub telegram_id: i64,
     pub is_admin: bool,
     pub default_account_id: Option<i64>,
 }
 
-#[allow(dead_code)]
 pub struct Account {
     pub id: i64,
     pub name: String,
@@ -16,20 +15,18 @@ pub struct Account {
     pub iban: Option<String>,
 }
 
-#[allow(dead_code)]
 pub struct Category {
     pub id: i64,
     pub name: String,
+    #[allow(dead_code)]
     pub sort_order: i64,
 }
 
-#[allow(dead_code)]
 pub struct Currency {
     pub id: i64,
     pub currency_code: String,
 }
 
-#[allow(dead_code)]
 pub struct Spending {
     pub id: i64,
     pub account_id: i64,
@@ -37,10 +34,10 @@ pub struct Spending {
     pub category_id: i64,
     pub reporter_id: i64,
     pub notes: Option<String>,
+    #[allow(dead_code)]
     pub created_at: String,
 }
 
-#[allow(dead_code)]
 pub struct RecentSpending {
     pub id: i64,
     pub amount: f64,
