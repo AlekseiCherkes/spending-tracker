@@ -141,6 +141,17 @@ sudo git config user.name "Spending Tracker Backup"
 
 ## Deploy from local machine
 
+Prerequisites (one-time setup):
+
+- [`cross`](https://github.com/cross-rs/cross) for cross-compilation to `x86_64-unknown-linux-musl`:
+  ```bash
+  cargo install cross --git https://github.com/cross-rs/cross
+  ```
+- A running container engine (Docker Desktop or Podman) — `cross` uses it under the hood.
+- SSH access to the `spending_tracker` host (configured in `~/.ssh/config`).
+
+Then:
+
 ```bash
 ./scripts/deploy.sh
 ```
