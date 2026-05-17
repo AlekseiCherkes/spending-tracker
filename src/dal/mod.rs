@@ -13,6 +13,20 @@ use models::{
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
+/// Map a rusqlite Result to Option, logging unexpected errors at warn level.
+/// `QueryReturnedNoRows` is the legitimate "not found" case and is silent so
+/// the cron log-grep alert doesn't fire for normal lookups.
+fn ok_or_log<T>(op: &str, r: rusqlite::Result<T>) -> Option<T> {
+    match r {
+        Ok(v) => Some(v),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => {
+            log::warn!("DB error in {}: {}", op, e);
+            None
+        }
+    }
+}
+
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
 }
@@ -62,12 +76,14 @@ impl Db {
 
     pub fn get_user_by_telegram_id(&self, telegram_id: i64) -> Option<User> {
         let conn = self.conn.lock().unwrap();
-        conn.query_row(
-            &format!("SELECT {USER_COLS} FROM users WHERE telegram_id = ?1"),
-            [telegram_id],
-            row_to_user,
+        ok_or_log(
+            "get_user_by_telegram_id",
+            conn.query_row(
+                &format!("SELECT {USER_COLS} FROM users WHERE telegram_id = ?1"),
+                [telegram_id],
+                row_to_user,
+            ),
         )
-        .ok()
     }
 
     pub fn get_all_users(&self) -> Vec<User> {
@@ -77,7 +93,7 @@ impl Db {
             .unwrap();
         stmt.query_map([], row_to_user)
             .unwrap()
-            .filter_map(|r| r.ok())
+            .filter_map(|r| ok_or_log("get_all_users row", r))
             .collect()
     }
 
@@ -101,18 +117,20 @@ impl Db {
             .unwrap();
         stmt.query_map([], row_to_account)
             .unwrap()
-            .filter_map(|r| r.ok())
+            .filter_map(|r| ok_or_log("get_all_accounts row", r))
             .collect()
     }
 
     pub fn get_account_by_id(&self, id: i64) -> Option<Account> {
         let conn = self.conn.lock().unwrap();
-        conn.query_row(
-            &format!("SELECT {ACCOUNT_COLS} FROM accounts WHERE id = ?1"),
-            [id],
-            row_to_account,
+        ok_or_log(
+            "get_account_by_id",
+            conn.query_row(
+                &format!("SELECT {ACCOUNT_COLS} FROM accounts WHERE id = ?1"),
+                [id],
+                row_to_account,
+            ),
         )
-        .ok()
     }
 
     pub fn get_all_categories(&self) -> Vec<Category> {
@@ -124,18 +142,20 @@ impl Db {
             .unwrap();
         stmt.query_map([], row_to_category)
             .unwrap()
-            .filter_map(|r| r.ok())
+            .filter_map(|r| ok_or_log("get_all_categories row", r))
             .collect()
     }
 
     pub fn get_category_by_id(&self, id: i64) -> Option<Category> {
         let conn = self.conn.lock().unwrap();
-        conn.query_row(
-            &format!("SELECT {CATEGORY_COLS} FROM categories WHERE id = ?1"),
-            [id],
-            row_to_category,
+        ok_or_log(
+            "get_category_by_id",
+            conn.query_row(
+                &format!("SELECT {CATEGORY_COLS} FROM categories WHERE id = ?1"),
+                [id],
+                row_to_category,
+            ),
         )
-        .ok()
     }
 
     pub fn get_all_currencies(&self) -> Vec<Currency> {
@@ -147,18 +167,20 @@ impl Db {
             .unwrap();
         stmt.query_map([], row_to_currency)
             .unwrap()
-            .filter_map(|r| r.ok())
+            .filter_map(|r| ok_or_log("get_all_currencies row", r))
             .collect()
     }
 
     pub fn get_currency_by_id(&self, id: i64) -> Option<Currency> {
         let conn = self.conn.lock().unwrap();
-        conn.query_row(
-            &format!("SELECT {CURRENCY_COLS} FROM currencies WHERE id = ?1"),
-            [id],
-            row_to_currency,
+        ok_or_log(
+            "get_currency_by_id",
+            conn.query_row(
+                &format!("SELECT {CURRENCY_COLS} FROM currencies WHERE id = ?1"),
+                [id],
+                row_to_currency,
+            ),
         )
-        .ok()
     }
 
     pub fn insert_spending(
@@ -179,12 +201,14 @@ impl Db {
 
     pub fn get_spending_by_id(&self, id: i64) -> Option<Spending> {
         let conn = self.conn.lock().unwrap();
-        conn.query_row(
-            &format!("SELECT {SPENDING_COLS} FROM spendings WHERE id = ?1"),
-            [id],
-            row_to_spending,
+        ok_or_log(
+            "get_spending_by_id",
+            conn.query_row(
+                &format!("SELECT {SPENDING_COLS} FROM spendings WHERE id = ?1"),
+                [id],
+                row_to_spending,
+            ),
         )
-        .ok()
     }
 
     pub fn update_spending(
@@ -213,10 +237,10 @@ impl Db {
     /// and timezone of stored `created_at`).
     pub fn current_year_month(&self) -> String {
         let conn = self.conn.lock().unwrap();
-        conn.query_row("SELECT strftime('%Y-%m', 'now', 'localtime')", [], |r| {
+        let r = conn.query_row("SELECT strftime('%Y-%m', 'now', 'localtime')", [], |r| {
             r.get(0)
-        })
-        .unwrap_or_else(|_| "1970-01".to_string())
+        });
+        ok_or_log("current_year_month", r).unwrap_or_else(|| "1970-01".to_string())
     }
 
     /// All spendings whose local-time `created_at` is in `year_month`
@@ -233,7 +257,7 @@ impl Db {
             .unwrap();
         stmt.query_map([year_month], row_to_recent_spending)
             .unwrap()
-            .filter_map(|r| r.ok())
+            .filter_map(|r| ok_or_log("get_spendings_in_month row", r))
             .collect()
     }
 
@@ -246,7 +270,7 @@ impl Db {
             .unwrap();
         stmt.query_map([limit], row_to_recent_spending)
             .unwrap()
-            .filter_map(|r| r.ok())
+            .filter_map(|r| ok_or_log("get_recent_spendings row", r))
             .collect()
     }
 }
