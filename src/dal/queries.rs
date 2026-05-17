@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS spendings (
     category_id INTEGER NOT NULL,
     reporter_id INTEGER NOT NULL,
     notes       TEXT,
+    -- Stored in UTC. The DAL converts to the process's local time (TZ env var)
+    -- only when reading for display.
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now')),
     FOREIGN KEY (account_id) REFERENCES accounts(id),
     FOREIGN KEY (category_id) REFERENCES categories(id),

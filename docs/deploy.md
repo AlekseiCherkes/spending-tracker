@@ -36,6 +36,8 @@ RestartSec=5
 Environment=TELOXIDE_TOKEN=your-bot-token-here
 Environment=DATABASE_PATH=/opt/spending-tracker/data/spending_tracker.db
 Environment=RUST_LOG=info
+# created_at timestamps are written in this TZ — pick the family's.
+Environment=TZ=Europe/Helsinki
 
 [Install]
 WantedBy=multi-user.target

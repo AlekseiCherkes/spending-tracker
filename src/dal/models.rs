@@ -53,18 +53,24 @@ pub struct RecentSpending {
 
 // SELECT-list constants and row→struct mappers. Each `*_COLS` constant must list
 // columns in the exact order the matching `row_to_*` function reads them.
+//
+// `created_at` is stored in UTC; SPENDING_COLS / RECENT_SPENDING_SELECT wrap it
+// in `strftime(..., 'localtime')` so callers receive the display-timezone
+// string directly. The display timezone is the process's `TZ` env var.
 
 pub(super) const USER_COLS: &str = "id, name, telegram_id, is_admin, default_account_id";
 pub(super) const ACCOUNT_COLS: &str = "id, name, currency_id, owner_id, iban";
 pub(super) const CATEGORY_COLS: &str = "id, name, sort_order";
 pub(super) const CURRENCY_COLS: &str = "id, currency_code";
-pub(super) const SPENDING_COLS: &str =
-    "id, account_id, amount, category_id, reporter_id, notes, created_at";
+pub(super) const SPENDING_COLS: &str = "id, account_id, amount, category_id, reporter_id, notes, \
+     strftime('%Y-%m-%dT%H:%M:%S', created_at, 'localtime') AS created_at";
 
 /// SELECT + FROM + JOINs for `RecentSpending`. Append a WHERE / ORDER BY / LIMIT
-/// at the call site.
+/// at the call site. Note the ORDER BY should use `s.created_at` (raw UTC) for
+/// chronological ordering, not the aliased local-time column.
 pub(super) const RECENT_SPENDING_SELECT: &str = "\
-    SELECT s.id, s.amount, c.currency_code, a.name, a.iban, cat.name, u.name, s.notes, s.created_at \
+    SELECT s.id, s.amount, c.currency_code, a.name, a.iban, cat.name, u.name, s.notes, \
+        strftime('%Y-%m-%dT%H:%M:%S', s.created_at, 'localtime') AS created_at_local \
     FROM spendings s \
     JOIN accounts a ON s.account_id = a.id \
     JOIN currencies c ON a.currency_id = c.id \

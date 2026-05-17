@@ -238,7 +238,7 @@ pub async fn handle_message(
                 return Ok(());
             }
             Command::Export => {
-                let current_ym = db.current_year_month_utc();
+                let current_ym = db.current_year_month();
                 let labeled: Vec<(String, String)> = export_month_options(&current_ym)
                     .into_iter()
                     .map(|(ym, is_current)| (format_month_label(&ym, is_current), ym))

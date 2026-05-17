@@ -209,24 +209,29 @@ impl Db {
         Ok(())
     }
 
-    /// Returns "YYYY-MM" for the current UTC month (matches the format of stored `created_at`).
-    pub fn current_year_month_utc(&self) -> String {
+    /// Returns "YYYY-MM" for the current local-time month (matches the format
+    /// and timezone of stored `created_at`).
+    pub fn current_year_month(&self) -> String {
         let conn = self.conn.lock().unwrap();
-        conn.query_row("SELECT strftime('%Y-%m', 'now')", [], |r| r.get(0))
-            .unwrap_or_else(|_| "1970-01".to_string())
+        conn.query_row("SELECT strftime('%Y-%m', 'now', 'localtime')", [], |r| {
+            r.get(0)
+        })
+        .unwrap_or_else(|_| "1970-01".to_string())
     }
 
-    /// All spendings whose `created_at` starts with `year_month` (e.g. "2026-05"),
-    /// ordered chronologically (oldest first). Joined with account/currency/category/user.
+    /// All spendings whose local-time `created_at` is in `year_month`
+    /// (e.g. "2026-05"), ordered chronologically (oldest first). Joined with
+    /// account/currency/category/user.
     pub fn get_spendings_in_month(&self, year_month: &str) -> Vec<RecentSpending> {
         let conn = self.conn.lock().unwrap();
-        let pattern = format!("{}%", year_month);
         let mut stmt = conn
             .prepare(&format!(
-                "{RECENT_SPENDING_SELECT} WHERE s.created_at LIKE ?1 ORDER BY s.created_at ASC, s.id ASC"
+                "{RECENT_SPENDING_SELECT} \
+                 WHERE strftime('%Y-%m', s.created_at, 'localtime') = ?1 \
+                 ORDER BY s.created_at ASC, s.id ASC"
             ))
             .unwrap();
-        stmt.query_map([pattern], row_to_recent_spending)
+        stmt.query_map([year_month], row_to_recent_spending)
             .unwrap()
             .filter_map(|r| r.ok())
             .collect()
@@ -447,9 +452,9 @@ mod tests {
     }
 
     #[test]
-    fn test_current_year_month_utc_format() {
+    fn test_current_year_month_format() {
         let db = Db::open_in_memory().unwrap();
-        let ym = db.current_year_month_utc();
+        let ym = db.current_year_month();
         // Format must be "YYYY-MM" so callers can do string filtering against created_at.
         assert_eq!(ym.len(), 7);
         assert_eq!(ym.chars().nth(4), Some('-'));
