@@ -1,3 +1,3 @@
-mod spending;
+mod draft;
 
-pub use spending::{DraftKey, DraftMode, DraftStore, EditState, SpendingDraft};
+pub use draft::{DraftKey, DraftMode, DraftStore, EditState, SpendingDraft};

@@ -18,8 +18,11 @@ Telegram bot layer using teloxide.
 - **`keyboards.rs`** — inline keyboard builders (summary, categories, accounts)
 
 ### `src/domain/`
-Business logic, independent of Telegram.
-- **`spending.rs`** — `SpendingDraft`, `EditState` enum, `DraftStore` (in-memory per-user draft management)
+Per-user in-memory draft state used by the bot UI. Today this is the only
+"domain" code; future report/import logic would live here too.
+- **`draft.rs`** — `SpendingDraft`, `DraftMode`, `EditState`, `DraftStore` (keyed by
+  `(chat_id, message_id)` of the bot's summary reply, so multiple concurrent
+  drafts in the same chat don't collide)
 
 ### `src/dal/`
 Data access layer wrapping rusqlite.
