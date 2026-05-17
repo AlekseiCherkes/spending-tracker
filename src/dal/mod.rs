@@ -5,6 +5,11 @@ mod seed;
 
 pub use models::*;
 
+use models::{
+    row_to_account, row_to_category, row_to_currency, row_to_recent_spending, row_to_spending,
+    row_to_user, ACCOUNT_COLS, CATEGORY_COLS, CURRENCY_COLS, RECENT_SPENDING_SELECT, SPENDING_COLS,
+    USER_COLS,
+};
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
@@ -55,17 +60,9 @@ impl Db {
     pub fn get_user_by_telegram_id(&self, telegram_id: i64) -> Option<User> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, name, telegram_id, is_admin, default_account_id FROM users WHERE telegram_id = ?1",
+            &format!("SELECT {USER_COLS} FROM users WHERE telegram_id = ?1"),
             [telegram_id],
-            |row| {
-                Ok(User {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    telegram_id: row.get(2)?,
-                    is_admin: row.get::<_, i64>(3)? != 0,
-                    default_account_id: row.get(4)?,
-                })
-            },
+            row_to_user,
         )
         .ok()
     }
@@ -73,20 +70,12 @@ impl Db {
     pub fn get_all_users(&self) -> Vec<User> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
-            .prepare("SELECT id, name, telegram_id, is_admin, default_account_id FROM users")
+            .prepare(&format!("SELECT {USER_COLS} FROM users"))
             .unwrap();
-        stmt.query_map([], |row| {
-            Ok(User {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                telegram_id: row.get(2)?,
-                is_admin: row.get::<_, i64>(3)? != 0,
-                default_account_id: row.get(4)?,
-            })
-        })
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect()
+        stmt.query_map([], row_to_user)
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn update_user_default_account(
@@ -105,36 +94,20 @@ impl Db {
     pub fn get_all_accounts(&self) -> Vec<Account> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
-            .prepare("SELECT id, name, currency_id, owner_id, iban FROM accounts")
+            .prepare(&format!("SELECT {ACCOUNT_COLS} FROM accounts"))
             .unwrap();
-        stmt.query_map([], |row| {
-            Ok(Account {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                currency_id: row.get(2)?,
-                owner_id: row.get(3)?,
-                iban: row.get(4)?,
-            })
-        })
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect()
+        stmt.query_map([], row_to_account)
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn get_account_by_id(&self, id: i64) -> Option<Account> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, name, currency_id, owner_id, iban FROM accounts WHERE id = ?1",
+            &format!("SELECT {ACCOUNT_COLS} FROM accounts WHERE id = ?1"),
             [id],
-            |row| {
-                Ok(Account {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    currency_id: row.get(2)?,
-                    owner_id: row.get(3)?,
-                    iban: row.get(4)?,
-                })
-            },
+            row_to_account,
         )
         .ok()
     }
@@ -142,32 +115,22 @@ impl Db {
     pub fn get_all_categories(&self) -> Vec<Category> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
-            .prepare("SELECT id, name, sort_order FROM categories ORDER BY sort_order")
+            .prepare(&format!(
+                "SELECT {CATEGORY_COLS} FROM categories ORDER BY sort_order"
+            ))
             .unwrap();
-        stmt.query_map([], |row| {
-            Ok(Category {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                sort_order: row.get(2)?,
-            })
-        })
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect()
+        stmt.query_map([], row_to_category)
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn get_category_by_id(&self, id: i64) -> Option<Category> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, name, sort_order FROM categories WHERE id = ?1",
+            &format!("SELECT {CATEGORY_COLS} FROM categories WHERE id = ?1"),
             [id],
-            |row| {
-                Ok(Category {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    sort_order: row.get(2)?,
-                })
-            },
+            row_to_category,
         )
         .ok()
     }
@@ -175,30 +138,22 @@ impl Db {
     pub fn get_all_currencies(&self) -> Vec<Currency> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
-            .prepare("SELECT id, currency_code FROM currencies ORDER BY id")
+            .prepare(&format!(
+                "SELECT {CURRENCY_COLS} FROM currencies ORDER BY id"
+            ))
             .unwrap();
-        stmt.query_map([], |row| {
-            Ok(Currency {
-                id: row.get(0)?,
-                currency_code: row.get(1)?,
-            })
-        })
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect()
+        stmt.query_map([], row_to_currency)
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn get_currency_by_id(&self, id: i64) -> Option<Currency> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, currency_code FROM currencies WHERE id = ?1",
+            &format!("SELECT {CURRENCY_COLS} FROM currencies WHERE id = ?1"),
             [id],
-            |row| {
-                Ok(Currency {
-                    id: row.get(0)?,
-                    currency_code: row.get(1)?,
-                })
-            },
+            row_to_currency,
         )
         .ok()
     }
@@ -222,19 +177,9 @@ impl Db {
     pub fn get_spending_by_id(&self, id: i64) -> Option<Spending> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, account_id, amount, category_id, reporter_id, notes, created_at FROM spendings WHERE id = ?1",
+            &format!("SELECT {SPENDING_COLS} FROM spendings WHERE id = ?1"),
             [id],
-            |row| {
-                Ok(Spending {
-                    id: row.get(0)?,
-                    account_id: row.get(1)?,
-                    amount: row.get(2)?,
-                    category_id: row.get(3)?,
-                    reporter_id: row.get(4)?,
-                    notes: row.get(5)?,
-                    created_at: row.get(6)?,
-                })
-            },
+            row_to_spending,
         )
         .ok()
     }
@@ -274,65 +219,27 @@ impl Db {
         let conn = self.conn.lock().unwrap();
         let pattern = format!("{}%", year_month);
         let mut stmt = conn
-            .prepare(
-                "SELECT s.id, s.amount, c.currency_code, a.name, a.iban, cat.name, u.name, s.notes, s.created_at
-                 FROM spendings s
-                 JOIN accounts a ON s.account_id = a.id
-                 JOIN currencies c ON a.currency_id = c.id
-                 JOIN categories cat ON s.category_id = cat.id
-                 JOIN users u ON s.reporter_id = u.id
-                 WHERE s.created_at LIKE ?1
-                 ORDER BY s.created_at ASC, s.id ASC",
-            )
+            .prepare(&format!(
+                "{RECENT_SPENDING_SELECT} WHERE s.created_at LIKE ?1 ORDER BY s.created_at ASC, s.id ASC"
+            ))
             .unwrap();
-        stmt.query_map([pattern], |row| {
-            Ok(RecentSpending {
-                id: row.get(0)?,
-                amount: row.get(1)?,
-                currency_code: row.get(2)?,
-                account_name: row.get(3)?,
-                account_iban: row.get(4)?,
-                category_name: row.get(5)?,
-                reporter_name: row.get(6)?,
-                notes: row.get(7)?,
-                created_at: row.get(8)?,
-            })
-        })
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect()
+        stmt.query_map([pattern], row_to_recent_spending)
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn get_recent_spendings(&self, limit: i64) -> Vec<RecentSpending> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
-            .prepare(
-                "SELECT s.id, s.amount, c.currency_code, a.name, a.iban, cat.name, u.name, s.notes, s.created_at
-                 FROM spendings s
-                 JOIN accounts a ON s.account_id = a.id
-                 JOIN currencies c ON a.currency_id = c.id
-                 JOIN categories cat ON s.category_id = cat.id
-                 JOIN users u ON s.reporter_id = u.id
-                 ORDER BY s.id DESC
-                 LIMIT ?1",
-            )
+            .prepare(&format!(
+                "{RECENT_SPENDING_SELECT} ORDER BY s.id DESC LIMIT ?1"
+            ))
             .unwrap();
-        stmt.query_map([limit], |row| {
-            Ok(RecentSpending {
-                id: row.get(0)?,
-                amount: row.get(1)?,
-                currency_code: row.get(2)?,
-                account_name: row.get(3)?,
-                account_iban: row.get(4)?,
-                category_name: row.get(5)?,
-                reporter_name: row.get(6)?,
-                notes: row.get(7)?,
-                created_at: row.get(8)?,
-            })
-        })
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect()
+        stmt.query_map([limit], row_to_recent_spending)
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn get_spending_created_at(&self, id: i64) -> Option<String> {
