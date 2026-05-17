@@ -14,6 +14,14 @@ pub enum EditState {
     ConfirmingDelete,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum DraftMode {
+    /// New spending — Save inserts a row.
+    New,
+    /// Editing an existing spending — Save updates row `id`, Delete removes it.
+    Editing(i64),
+}
+
 #[derive(Debug, Clone)]
 pub struct SpendingDraft {
     pub amount: f64,
@@ -23,8 +31,7 @@ pub struct SpendingDraft {
     pub telegram_id: i64,
     pub notes: Option<String>,
     pub edit_state: EditState,
-    /// If `Some(id)`, this draft edits an existing spending row instead of inserting a new one.
-    pub editing_id: Option<i64>,
+    pub mode: DraftMode,
 }
 
 pub struct DraftStore {
@@ -134,7 +141,7 @@ mod tests {
             telegram_id: USER_TG,
             notes: None,
             edit_state: EditState::Summary,
-            editing_id: None,
+            mode: DraftMode::New,
         }
     }
 

@@ -4,7 +4,7 @@ use teloxide::prelude::*;
 use teloxide::types::{InputFile, MessageId, ParseMode};
 
 use crate::dal::Db;
-use crate::domain::{DraftKey, DraftStore, EditState, SpendingDraft};
+use crate::domain::{DraftKey, DraftMode, DraftStore, EditState, SpendingDraft};
 
 use super::commands::{parse_command, Command};
 use super::export::{build_csv, export_month_options};
@@ -165,7 +165,7 @@ async fn rerender_draft_summary(
             &d.category_label,
             &d.account_label,
             draft.notes.as_deref(),
-            draft.editing_id.is_some(),
+            matches!(draft.mode, DraftMode::Editing(_)),
         ))
         .await?;
     Ok(())
@@ -320,7 +320,7 @@ pub async fn handle_message(
         telegram_id,
         notes: None,
         edit_state: EditState::Summary,
-        editing_id: None,
+        mode: DraftMode::New,
     };
 
     let d = build_draft_display(&draft, &db);
@@ -416,7 +416,7 @@ pub async fn handle_callback(
             telegram_id,
             notes: spending.notes,
             edit_state: EditState::Summary,
-            editing_id: Some(spending.id),
+            mode: DraftMode::Editing(spending.id),
         };
         let d = build_draft_display(&draft, &db);
         let sent = bot
@@ -470,8 +470,8 @@ pub async fn handle_callback(
         }
         CallbackAction::Save => {
             let draft = drafts.remove(key).unwrap();
-            let (header, spending_id) = match draft.editing_id {
-                Some(id) => {
+            let (header, spending_id) = match draft.mode {
+                DraftMode::Editing(id) => {
                     db.update_spending(
                         id,
                         draft.account_id,
@@ -481,7 +481,7 @@ pub async fn handle_callback(
                     )?;
                     ("✅ Изменено!", id)
                 }
-                None => {
+                DraftMode::New => {
                     let new_id = db.insert_spending(
                         draft.account_id,
                         draft.amount,
@@ -530,17 +530,13 @@ pub async fn handle_callback(
                 .await?;
         }
         CallbackAction::ConfirmDelete => {
+            // Delete is only offered from Editing mode (summary_keyboard gates
+            // the button on `editing`), so a New-mode draft here would be a bug.
             let draft = drafts.remove(key).unwrap();
-            match draft.editing_id {
-                Some(id) => {
-                    db.delete_spending(id)?;
-                    bot.edit_message_text(chat_id, msg_id, "🗑 Транзакция удалена.")
-                        .await?;
-                }
-                None => {
-                    bot.edit_message_text(chat_id, msg_id, "❌ Расход отменён.")
-                        .await?;
-                }
+            if let DraftMode::Editing(id) = draft.mode {
+                db.delete_spending(id)?;
+                bot.edit_message_text(chat_id, msg_id, "🗑 Транзакция удалена.")
+                    .await?;
             }
         }
         CallbackAction::CancelDelete => {
