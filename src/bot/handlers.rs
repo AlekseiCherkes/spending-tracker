@@ -230,7 +230,9 @@ pub async fn handle_message(
             Command::Recent => {
                 let recent = db.get_recent_spendings(RECENT_LIMIT);
                 let text = format_recent_spendings(&recent);
-                let mut send = bot.send_message(msg.chat.id, text);
+                let mut send = bot
+                    .send_message(msg.chat.id, text)
+                    .parse_mode(ParseMode::Html);
                 if !recent.is_empty() {
                     send = send.reply_markup(keyboards::recent_keyboard(&recent));
                 }

@@ -41,35 +41,48 @@ pub(super) fn format_month_label(year_month: &str, is_current: bool) -> String {
     }
 }
 
-pub(super) fn format_short_datetime(iso: &str) -> String {
-    let (date_part, time_part) = iso.split_once('T').unwrap_or((iso, ""));
-    let hm: String = time_part.split(':').take(2).collect::<Vec<_>>().join(":");
-    if hm.is_empty() {
-        date_part.to_string()
-    } else {
-        format!("{} {}", date_part, hm)
-    }
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
+pub(super) fn split_iso_date_time(iso: &str) -> (&str, String) {
+    let (date_part, time_part) = iso.split_once('T').unwrap_or((iso, ""));
+    let hm: String = time_part.split(':').take(2).collect::<Vec<_>>().join(":");
+    (date_part, hm)
+}
+
+/// Output uses HTML parse mode — caller must send with `ParseMode::Html`.
 pub(super) fn format_recent_spendings(items: &[RecentSpending]) -> String {
     if items.is_empty() {
         return "🧾 Транзакций пока нет".to_string();
     }
     let mut out = String::from("🧾 Последние транзакции (нажмите номер, чтобы изменить)\n\n");
+    let mut current_date: Option<&str> = None;
     for (i, s) in items.iter().enumerate() {
-        let when = format_short_datetime(&s.created_at);
+        let (date, time) = split_iso_date_time(&s.created_at);
+        if current_date != Some(date) {
+            if current_date.is_some() {
+                out.push('\n');
+            }
+            out.push_str(&format!("<b>{}</b>\n", html_escape(date)));
+            current_date = Some(date);
+        }
         let cat = keyboards::format_category(&s.category_name);
+        let when = if time.is_empty() { date } else { time.as_str() };
         out.push_str(&format!(
-            "{}. {} — {:.2} {} — {} — {}\n",
+            "{}. {} — {:.2} {} — {} — {} — {}\n",
             i + 1,
-            when,
+            html_escape(when),
             s.amount,
-            s.currency_code,
-            cat,
-            s.reporter_name
+            html_escape(&s.currency_code),
+            html_escape(&cat),
+            html_escape(&s.account_name),
+            html_escape(&s.reporter_name),
         ));
         if let Some(note) = s.notes.as_deref().filter(|n| !n.is_empty()) {
-            out.push_str(&format!("   📝 {}\n", note));
+            out.push_str(&format!("   📝 {}\n", html_escape(note)));
         }
     }
     out.trim_end().to_string()
@@ -308,16 +321,17 @@ mod tests {
     }
 
     #[test]
-    fn test_format_short_datetime_iso() {
-        assert_eq!(
-            format_short_datetime("2026-05-16T14:30:25"),
-            "2026-05-16 14:30"
-        );
+    fn test_split_iso_date_time_iso() {
+        let (date, time) = split_iso_date_time("2026-05-16T14:30:25");
+        assert_eq!(date, "2026-05-16");
+        assert_eq!(time, "14:30");
     }
 
     #[test]
-    fn test_format_short_datetime_no_time() {
-        assert_eq!(format_short_datetime("2026-05-16"), "2026-05-16");
+    fn test_split_iso_date_time_no_time() {
+        let (date, time) = split_iso_date_time("2026-05-16");
+        assert_eq!(date, "2026-05-16");
+        assert_eq!(time, "");
     }
 
     #[test]
@@ -326,10 +340,10 @@ mod tests {
     }
 
     #[test]
-    fn test_format_recent_spendings_with_and_without_notes() {
+    fn test_format_recent_spendings_groups_by_date_and_shows_account() {
         let items = vec![
             RecentSpending {
-                id: 2,
+                id: 3,
                 amount: 15.5,
                 currency_code: "EUR".into(),
                 account_name: "Account A".into(),
@@ -338,6 +352,17 @@ mod tests {
                 reporter_name: "Alice".into(),
                 notes: Some("молоко".into()),
                 created_at: "2026-05-16T14:30:25".into(),
+            },
+            RecentSpending {
+                id: 2,
+                amount: 2.0,
+                currency_code: "EUR".into(),
+                account_name: "Account B".into(),
+                account_iban: None,
+                category_name: "Кофе и вкусняшки".into(),
+                reporter_name: "Alice".into(),
+                notes: None,
+                created_at: "2026-05-16T09:00:00".into(),
             },
             RecentSpending {
                 id: 1,
@@ -353,13 +378,39 @@ mod tests {
         ];
         let out = format_recent_spendings(&items);
         assert!(out.starts_with("🧾 Последние транзакции"));
-        assert!(out.contains("1. 2026-05-16 14:30 — 15.50 EUR — 🛒 Продукты и хозтовары — Alice"));
+        // Bold date headers, one per distinct date.
+        assert_eq!(out.matches("<b>2026-05-16</b>").count(), 1);
+        assert_eq!(out.matches("<b>2026-05-15</b>").count(), 1);
+        // Per-line format: number, time, amount, category, account, reporter.
+        assert!(out.contains("1. 14:30 — 15.50 EUR — 🛒 Продукты и хозтовары — Account A — Alice"));
+        assert!(out.contains("2. 09:00 — 2.00 EUR — ☕ Кофе и вкусняшки — Account B — Alice"));
+        assert!(out.contains("3. 09:10 — 4.00 EUR — ☕ Кофе и вкусняшки — Account A — Bob"));
         assert!(out.contains("   📝 молоко"));
-        assert!(out.contains("2. 2026-05-15 09:10 — 4.00 EUR — ☕ Кофе и вкусняшки — Bob"));
-        let alice_idx = out.find("Alice").unwrap();
-        let bob_idx = out.find("Bob").unwrap();
-        assert!(alice_idx < bob_idx);
+        // Date order preserved (newest-first as DAL returns).
+        let d16 = out.find("<b>2026-05-16</b>").unwrap();
+        let d15 = out.find("<b>2026-05-15</b>").unwrap();
+        assert!(d16 < d15);
         assert_eq!(out.matches("📝").count(), 1);
+    }
+
+    #[test]
+    fn test_format_recent_spendings_escapes_html_in_user_text() {
+        let items = vec![RecentSpending {
+            id: 1,
+            amount: 1.0,
+            currency_code: "EUR".into(),
+            account_name: "A & B".into(),
+            account_iban: None,
+            category_name: "Другое".into(),
+            reporter_name: "<Eve>".into(),
+            notes: Some("<script>".into()),
+            created_at: "2026-05-16T10:00:00".into(),
+        }];
+        let out = format_recent_spendings(&items);
+        assert!(out.contains("A &amp; B"));
+        assert!(out.contains("&lt;Eve&gt;"));
+        assert!(out.contains("&lt;script&gt;"));
+        assert!(!out.contains("<script>"));
     }
 
     #[test]
